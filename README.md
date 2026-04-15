@@ -22,39 +22,7 @@ Compare:
 
 ## Architecture
 
-```
-  Task
-   │
-   ▼
-┌──────────┐
-│ Clarifier │──── Resolves ambiguity, writes TASK_FINAL.md
-└────┬─────┘
-     ▼
-┌──────────┐
-│ Planner  │──── Researches best practices (web search), writes PLAN.md
-└────┬─────┘
-     ▼
-┌──────────────┐
-│ Plan Review  │──── Two independent passes, challenges the plan
-│    (x2)      │     against codebase reality → PLAN_FINAL.md
-└────┬─────────┘
-     ▼
-┌──────────────┐
-│ Implementer  │──── Writes code following PLAN_FINAL.md
-└────┬─────────┘
-     ▼
-┌──────────────┐
-│ Code Review  │──── Reviews diff against plan AND existing code
-└────┬─────────┘     Assumes implementer made mistakes
-     ▼
-┌──────────┐
-│  Fixer   │──── Applies review findings
-└────┬─────┘
-     ▼
-┌──────────┐
-│    QA    │──── Runs tests, verifies acceptance criteria
-└──────────┘
-```
+![MAW pipeline architecture](assets/maw_pipeline_architecture.svg)
 
 Key design decisions:
 - **No shared context** — agents communicate only through files (task.md, PLAN.md, diffs). No chat history carries over. This is a common pattern in adversarial pipelines, but MAW enforces it across all 7 stages including planning.

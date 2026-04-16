@@ -1,9 +1,9 @@
 ---
-name: maw
+name: maw-execute-task
 description: |
   Adversarial multi-agent development pipeline. Use when the user says "take the next task", "work through tasks", "run the pipeline", or wants to implement a task from the task board with full planning, review, implementation, and QA cycle.
   Supports flags: --worktree (force worktree mode), --no-worktree (force branch-only mode). These override the saved setting for the current run only.
-  Supports positional arg: a task number or ID (e.g. `/maw 3`, `/maw TASK-003`) to run a specific task out of priority order instead of picking the highest-priority pending task.
+  Supports positional arg: a task number or ID (e.g. `/maw-execute-task 3`, `/maw-execute-task TASK-003`) to run a specific task out of priority order instead of picking the highest-priority pending task.
 disable-model-invocation: true
 ---
 
@@ -97,7 +97,7 @@ You are the orchestrator. Do not implement anything yourself. Your job is to spa
 
 ### Step 0 — Pick a task
 
-**If the user passed a task number or ID** (e.g. `/maw 3`, `/maw 003`, `/maw TASK-003`): normalize it to `TASK-NNN` (zero-pad to 3 digits) and look for the matching folder in `maw/tasks/pending/`. If not found there, also check `maw/tasks/blocked/` — running `/maw TASK-003` on a blocked task is a valid way to retry it, in which case move it from `blocked/` to `pending/` first. If the task exists in `in_progress/` or `done/`, refuse and report to the user. If the ID matches nothing, list available pending/blocked IDs and stop.
+**If the user passed a task number or ID** (e.g. `/maw-execute-task 3`, `/maw-execute-task 003`, `/maw-execute-task TASK-003`): normalize it to `TASK-NNN` (zero-pad to 3 digits) and look for the matching folder in `maw/tasks/pending/`. If not found there, also check `maw/tasks/blocked/` — running `/maw-execute-task TASK-003` on a blocked task is a valid way to retry it, in which case move it from `blocked/` to `pending/` first. If the task exists in `in_progress/` or `done/`, refuse and report to the user. If the ID matches nothing, list available pending/blocked IDs and stop.
 
 **Otherwise (no arg):** scan `maw/tasks/pending/` for task folders. Read each `task.md` to find priorities. Pick the highest-priority task (or the first one if priorities are equal).
 
@@ -123,7 +123,7 @@ Also read the `Type:` field — useful for agent context but does not affect pip
 
 ### Step 0.5 — Check worktree mode
 
-**CLI override:** If the user invoked `/maw --worktree`, set `USE_WORKTREE=true` and skip the rest of this step. If `/maw --no-worktree`, set `USE_WORKTREE=false` and skip.
+**CLI override:** If the user invoked `/maw-execute-task --worktree`, set `USE_WORKTREE=true` and skip the rest of this step. If `/maw-execute-task --no-worktree`, set `USE_WORKTREE=false` and skip.
 
 Read `maw/settings.json`. If the file does not exist or `worktree_mode` is missing:
 

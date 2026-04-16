@@ -1,5 +1,5 @@
 ---
-name: add-task
+name: maw-tasks
 description: |
   Create well-formed tasks for the MAW pipeline. Use when the user says "add a task", "create a task", "new task", or describes a feature/fix/refactor that should be tracked — even if they don't explicitly ask to create a task.
   Supports flag: --mode <full|small-fix|brainstorm|deep-research> to skip mode suggestion and set the mode directly.

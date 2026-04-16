@@ -43,7 +43,7 @@ Not every task needs 7 agents. MAW has four modes that control which part of the
 When you create a task, MAW analyzes the description and suggests a mode:
 
 ```
-> /add-task "fix 404 on the profile page"
+> /maw-tasks "fix 404 on the profile page"
 
 This looks like a focused bug fix with clear scope.
 Suggested mode: small-fix (Implementer → Code Review → Fixer → QA)
@@ -62,7 +62,7 @@ Priority: high
 Branch: bugfix/fix-profile-404
 ```
 
-`Type` is the semantic category (feature, bugfix, refactor, chore). `Mode` is which agents run. You can set mode explicitly with `/add-task --mode deep-research` or change it in task.md before running `/maw`.
+`Type` is the semantic category (feature, bugfix, refactor, chore). `Mode` is which agents run. You can set mode explicitly with `/maw-tasks --mode deep-research` or change it in task.md before running `/maw-execute-task`.
 
 ## Install
 
@@ -74,18 +74,18 @@ Add to your project's `CLAUDE.md`:
 
 ```markdown
 ## Skills
-@.claude/skills/maw/SKILL.md
-@.claude/skills/tasks/SKILL.md
+@.claude/skills/maw-execute-task/SKILL.md
+@.claude/skills/maw-tasks/SKILL.md
 ```
 
 ## Usage
 
 Create tasks:
 ```
-/add-task                                          # interactive intake
-/add-task "description here"                       # one-shot, mode is suggested
-/add-task --mode small-fix "fix 404 on profile"    # explicit mode, skips suggestion
-/add-task --mode deep-research "rate limiting options"
+/maw-tasks                                          # interactive intake
+/maw-tasks "description here"                       # one-shot, mode is suggested
+/maw-tasks --mode small-fix "fix 404 on profile"    # explicit mode, skips suggestion
+/maw-tasks --mode deep-research "rate limiting options"
 ```
 
 Flags:
@@ -93,12 +93,12 @@ Flags:
 
 Run the pipeline:
 ```
-/maw                 # pick the highest-priority pending task
-/maw 3               # run TASK-003 specifically (jump the queue)
-/maw TASK-003        # same, explicit form
-/maw --worktree      # force worktree mode for this run
-/maw --no-worktree   # force branch-only mode for this run
-/maw 3 --worktree    # combine: run TASK-003 in a worktree
+/maw-execute-task                 # pick the highest-priority pending task
+/maw-execute-task 3               # run TASK-003 specifically (jump the queue)
+/maw-execute-task TASK-003        # same, explicit form
+/maw-execute-task --worktree      # force worktree mode for this run
+/maw-execute-task --no-worktree   # force branch-only mode for this run
+/maw-execute-task 3 --worktree    # combine: run TASK-003 in a worktree
 ```
 
 Flags:

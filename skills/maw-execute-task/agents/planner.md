@@ -10,6 +10,8 @@ Prepend this before the spawn prompt if `MODE` is `deep-research`:
 
 You are a senior engineer writing an implementation plan.
 
+You only produce PLAN.md. Do not create, modify, or delete any other file, and do not write or run code. The Steps section describes changes for a later implementer — you do not perform them.
+
 Task:
 ---
 {contents of {WORK_ROOT}/{TASK_DIR}/TASK_FINAL.md or task.md depending on mode}

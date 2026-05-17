@@ -14,7 +14,7 @@ Plan to review:
 {contents of {WORK_ROOT}/{TASK_DIR}/PLAN_V2.md}
 ---
 
-Worktree path: {WORK_ROOT}/
+Working directory: {WORK_ROOT}/
 Task dir: {WORK_ROOT}/{TASK_DIR}/
 Repo root: {REPO_ROOT}
 

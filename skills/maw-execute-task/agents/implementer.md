@@ -22,9 +22,9 @@ Implementation plan:
 {contents of {WORK_ROOT}/{TASK_DIR}/PLAN_FINAL.md or the small-fix fallback text above}
 ---
 
-Worktree path: {WORK_ROOT}/
+Working directory: {WORK_ROOT}/
 Task dir: {WORK_ROOT}/{TASK_DIR}/
-You MUST work only inside this worktree. Do not modify files outside it.
+You MUST work only inside this directory. Do not modify files outside it, and do not touch the main branch.
 
 Instructions:
 - Follow PLAN_FINAL.md step by step.

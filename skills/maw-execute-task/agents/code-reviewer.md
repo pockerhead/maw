@@ -27,7 +27,7 @@ Implementation summary:
 {contents of {WORK_ROOT}/{TASK_DIR}/IMPL_SUMMARY.md}
 ---
 
-Worktree path: {WORK_ROOT}/
+Working directory: {WORK_ROOT}/
 Task dir: {WORK_ROOT}/{TASK_DIR}/
 
 Instructions:

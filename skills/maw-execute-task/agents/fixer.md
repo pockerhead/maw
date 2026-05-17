@@ -23,9 +23,9 @@ Review to act on:
 {contents of {WORK_ROOT}/{TASK_DIR}/IMPL_REVIEW.md}
 ---
 
-Worktree path: {WORK_ROOT}/
+Working directory: {WORK_ROOT}/
 Task dir: {WORK_ROOT}/{TASK_DIR}/
-You MUST work only inside this worktree.
+You MUST work only inside this directory. Do not modify files outside it, and do not touch the main branch.
 
 Instructions:
 - For each issue in the review: open the referenced file and check whether the issue is real.

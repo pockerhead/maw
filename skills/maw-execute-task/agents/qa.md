@@ -33,17 +33,17 @@ Fix summary:
 {contents of {WORK_ROOT}/{TASK_DIR}/FIX_SUMMARY.md}
 ---
 
-Worktree path: {WORK_ROOT}/
+Working directory: {WORK_ROOT}/
 Task dir: {WORK_ROOT}/{TASK_DIR}/
-Repo root: {REPO_ROOT}
 
 ## Environment setup — follow this decision tree:
 
-1. **Check for docker-compose**: if `docker-compose.yml` or `compose.yml` exists at repo root, use it.
+1. **Check for docker-compose**: if `docker-compose.yml` or `compose.yml` exists in the working directory, use it.
    ```bash
-   cd {REPO_ROOT} && docker-compose up -d
+   cd {WORK_ROOT} && docker-compose up -d
    # wait for health checks, then run against the live stack
    ```
+   Always use `{WORK_ROOT}`, not the repo root — in worktree mode the repo root is the main branch and would build the OLD code, not the implementation under test.
 
 2. **Check for Makefile/justfile with dev target**: if `make dev`, `just dev`, or `npm run dev` exists and starts a server, use it. Start it in background, wait up to 30 seconds for the port to open (`curl --retry 10 --retry-delay 3 --retry-connrefused http://localhost:{PORT}/health`). If not up after 30s — stop and fall through to option 3.
 
@@ -76,7 +76,7 @@ Write {WORK_ROOT}/{TASK_DIR}/QA_REPORT.md with:
 After writing QA_REPORT.md, stop any services you started:
 ```bash
 # if you used docker-compose:
-cd {REPO_ROOT} && docker-compose down
+cd {WORK_ROOT} && docker-compose down
 # if you started individual containers, stop each by its exact name as listed in QA_REPORT:
 # docker stop <name1> <name2> ... && docker rm <name1> <name2> ...
 ```

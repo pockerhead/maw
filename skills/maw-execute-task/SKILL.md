@@ -17,15 +17,23 @@ Pipeline settings are stored in `maw/settings.json`. The orchestrator checks thi
 {
   "worktree_mode": "always" | "never" | "ask",
   "agent_model": "sonnet",
-  "agent_model_overrides": { "planner": "opus", "code-reviewer": "opus" }
+  "agent_model_overrides": { "planner": "opus", "code-reviewer": "opus" },
+  "agent_effort": "medium",
+  "agent_effort_overrides": { "code-reviewer": "high", "qa": "high" }
 }
 ```
 
+Agent names everywhere are the agent file stems: `clarifier`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`.
+
 - `worktree_mode`: `always` — always create a git worktree for the task (default if user picks this); `never` — work on a feature branch directly, no worktree; `ask` — ask the user each time before starting a task
 - `agent_model`: model every spawned agent runs on by default. `sonnet` (default), `opus`, or `haiku`.
-- `agent_model_overrides`: optional map of agent name → model, for agents that should run on a different model than `agent_model`. Keys are agent file names without extension: `clarifier`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`. Omit the key (or the whole field) to use `agent_model`.
+- `agent_model_overrides`: optional map of agent name → model for agents that should differ from `agent_model`. Omit the key (or the whole field) to use `agent_model`.
+- `agent_effort`: default prompt-effort directive injected into every agent. `low`, `medium` (default), or `high`. `medium` injects nothing (lean default); `low` and `high` inject a short directive — see Step 0.6.
+- `agent_effort_overrides`: optional map of agent name → effort for agents that should differ from `agent_effort`.
 
-If `maw/settings.json` does not exist or `worktree_mode` is missing, the orchestrator **must ask the user** before proceeding (see Step 0.5). If `agent_model` is missing, the orchestrator **must ask the user** the model question (see Step 0.6).
+Both model and effort can also be overridden **per task** in `task.md` (see Step 0.6 precedence) — `task.md` always beats `settings.json`.
+
+If `maw/settings.json` does not exist or `worktree_mode` is missing, the orchestrator **must ask the user** before proceeding (see Step 0.5). If `agent_model` or `agent_effort` is missing, the orchestrator **must ask the user** the model/effort question (see Step 0.6).
 
 ---
 
@@ -50,7 +58,7 @@ Read `Mode:` right after picking the task (Step 0) and store it as `MODE`. Later
 
 You are the orchestrator. Do not implement anything yourself. Your job is to spawn agents in sequence using the Task tool and pass artifacts between them via files.
 
-**Agent prompts live in `agents/` directory** (relative to this skill). For each step, read the corresponding agent file, substitute variables (`{WORK_ROOT}`, `{TASK_DIR}`, `{REPO_ROOT}`, and file contents), then spawn the agent with the resulting prompt. Spawn it with the `model` parameter set per the model resolution rule in Step 0.6.
+**Agent prompts live in `agents/` directory** (relative to this skill). For each step, read the corresponding agent file, substitute variables (`{WORK_ROOT}`, `{TASK_DIR}`, `{REPO_ROOT}`, and file contents), then spawn the agent with the resulting prompt. Spawn it with the `model` parameter and effort directive resolved per Step 0.6.
 
 ### Step 0 — Pick a task
 
@@ -109,36 +117,62 @@ Use worktree for this task, or branch only?
 
 Store the effective choice for this run in a variable `USE_WORKTREE` (true/false). All subsequent steps use this variable.
 
-### Step 0.6 — Check agent model config
+### Step 0.6 — Resolve per-agent model and effort
 
-Read `agent_model` from `maw/settings.json`. If the field is missing (or the file did not exist), ask the user once:
+**First-run config.** Read `agent_model` and `agent_effort` from `maw/settings.json`. If either is missing (or the file did not exist), ask the user once:
 
 ```
-Which model should pipeline agents run on?
-1. Sonnet (default) — all 8 agents on sonnet.
-2. Customize — sonnet by default, but pick a different model for specific agents
-   (e.g. opus for planner / plan-reviewer-1 / plan-reviewer-2 / code-reviewer / qa).
+1. Model for pipeline agents?
+   a. Sonnet (default) — all 8 agents on sonnet.
+   b. Customize — sonnet by default, pick a different model for specific agents.
+2. Effort level for pipeline agents?
+   a. Medium (default) — no extra directive.
+   b. Customize — medium by default, raise/lower effort for specific agents.
 ```
 
-If "Customize", ask which agents and which model (`opus` or `haiku`) for each. Then write the result back into `maw/settings.json`, preserving `worktree_mode`:
+For each "Customize", ask which agents and which value. Then write the result back into `maw/settings.json`, preserving `worktree_mode` (read the existing file first, merge — do not clobber other fields):
 
 ```bash
 mkdir -p maw
-# merge, do not clobber worktree_mode — read existing file first if present
 cat > maw/settings.json << 'EOF'
 {
   "worktree_mode": "always",
   "agent_model": "sonnet",
-  "agent_model_overrides": { "planner": "opus" }
+  "agent_model_overrides": { "planner": "opus" },
+  "agent_effort": "medium",
+  "agent_effort_overrides": { "code-reviewer": "high" }
 }
 EOF
 ```
 
-(`agent_model_overrides` may be `{}` or omitted if the user kept everything on the default.)
+(Override maps may be `{}` or omitted.) Asked only once — on later runs both fields are present and this prompt is skipped.
 
-This question is asked only once — on later runs `agent_model` is present and this step is skipped.
+**Per-task overrides.** `task.md` may carry optional header lines:
 
-**Model resolution (used at every agent spawn below).** For an agent whose file is `agents/<name>.md`, the model is `agent_model_overrides[<name>]` if that key exists, otherwise `agent_model`. When spawning the agent via the Task tool, pass this resolved value as the `model` parameter. This is the only thing that changes per agent — prompts and pipeline shape are unaffected.
+```
+Models: default=opus, code-reviewer=opus
+Effort: default=high, implementer=low
+```
+
+Parse each line as comma-separated tokens: `default=<v>` (or a bare `<v>`) sets the task-wide value for that dimension; `<agent-name>=<v>` sets it for one agent. Missing line / missing token → no per-task value at that level. Invalid model or effort value → stop and report to the user.
+
+**Resolution (per agent, for both model and effort). Highest match wins:**
+
+1. `task.md` per-agent (`<name>=` in `Models:`/`Effort:`)
+2. `task.md` task-wide (`default=` or bare value)
+3. `settings.json` `*_overrides[<name>]`
+4. `settings.json` `agent_model` / `agent_effort`
+5. built-in default: model `sonnet`, effort `medium`
+
+**Applying the resolved values at every agent spawn below:**
+
+- **Model** → pass as the Task tool `model` parameter.
+- **Effort** → prepend an effort directive to the agent's spawn prompt:
+  - `medium` → prepend nothing.
+  - `high` → `Effort: HIGH. Be exhaustive. Open files fully, verify every claim against actual code, probe edge cases and failure paths, do not shortcut or assume.`
+  - `low` → `Effort: LOW. Optimize for speed. Smallest correct change, skip optional exploration and deep dives, do not gold-plate.`
+
+This is the only thing that varies per agent — pipeline shape and the rest of each prompt are unaffected.
 
 ### Step 1 — Create branch (and worktree if enabled)
 
@@ -312,7 +346,7 @@ The framing comes with an implicit constraint: **change only what you can verify
 
 - Never implement anything yourself. You only spawn agents and move files/folders.
 - Each agent is a fresh Task call with no conversation history — all context must be in the spawn prompt.
-- Every Task spawn passes an explicit `model` parameter resolved via Step 0.6 (`agent_model_overrides[<name>]` else `agent_model`). Never spawn without it.
+- Every Task spawn passes a `model` parameter and (if not `medium`) an effort directive, both resolved via the Step 0.6 precedence (task.md beats settings.json). Never spawn without resolving them.
 - If a Task call fails or produces no output file, retry once with an explicit instruction to write the output file before finishing.
 - Never merge to main without user confirmation.
 - If any agent produces a FAIL verdict: pause, report to user, wait for instructions before continuing.

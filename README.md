@@ -173,17 +173,28 @@ First run asks two things, both saved to `maw/settings.json`.
 | `never` | Feature branch only |
 | `ask` | Prompt each time |
 
-**Agent model.** Every spawned agent runs on `sonnet` by default. On first run MAW asks whether to keep all agents on sonnet or customize per agent. Overrides are stored as a map and applied at spawn time via the Task tool's `model` parameter:
+**Agent model and effort.** Every spawned agent runs on `sonnet` at `medium` effort by default. On first run MAW asks whether to keep the defaults or customize per agent. Effort is a prompt directive injected at spawn (`medium` injects nothing, `high` pushes exhaustive verification, `low` favors speed); model is passed via the Task tool's `model` parameter.
 
 ```json
 {
   "worktree_mode": "always",
   "agent_model": "sonnet",
-  "agent_model_overrides": { "planner": "opus", "code-reviewer": "opus" }
+  "agent_model_overrides": { "planner": "opus", "code-reviewer": "opus" },
+  "agent_effort": "medium",
+  "agent_effort_overrides": { "code-reviewer": "high", "qa": "high" }
 }
 ```
 
-Override keys are agent names: `clarifier`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`. Accepted models: `sonnet`, `opus`, `haiku`. Edit `maw/settings.json` directly to change it later.
+Agent names: `clarifier`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`. Models: `sonnet`, `opus`, `haiku`. Effort: `low`, `medium`, `high`. Edit `maw/settings.json` directly to change the defaults later.
+
+**Per-task override.** A task can override both for itself via optional `task.md` header lines, which beat `settings.json` for that task only:
+
+```markdown
+Models: default=opus, code-reviewer=opus
+Effort: code-reviewer=high, qa=high
+```
+
+Each line is comma-separated tokens: `default=<v>` sets the task-wide value, `<agent>=<v>` sets one agent. When you create a task with `/maw-tasks`, MAW may itself propose reinforcing specific agents (stronger model / higher effort) for risky tasks — auth, payments, migrations, concurrency — which you confirm, edit, or decline. Resolution precedence: task.md per-agent → task.md task-wide → settings.json overrides → settings.json default → built-in (`sonnet`/`medium`).
 
 ## License
 

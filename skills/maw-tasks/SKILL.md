@@ -65,6 +65,23 @@ Options: [full] [small-fix] [brainstorm] [deep-research]
 
 Wait for the user to confirm or pick a different mode. Store the chosen value as `MODE`.
 
+### Step 2.6 — Suggest per-task agent reinforcement (optional)
+
+Based on the task's risk profile, you **may** proactively propose reinforcing specific pipeline agents for this task only — a stronger model and/or higher effort. This is at your discretion: only suggest it when the task genuinely warrants it, otherwise skip this step silently and write no `Models:`/`Effort:` lines (the pipeline falls back to `maw/settings.json` defaults).
+
+Signals that justify reinforcement: auth, payments, security, data migration, schema changes, concurrency, money/precision, public API contracts, anything irreversible or hard to roll back. Cheap/contained tasks need none.
+
+Reinforce the agents that actually catch the relevant class of mistake — usually `code-reviewer`, `qa`, and the plan reviewers — not the whole pipeline. Keep it minimal and explain the why in one sentence. Example:
+
+```
+This touches auth and is hard to roll back. Suggested reinforcement:
+  code-reviewer → opus, effort=high
+  qa            → effort=high
+Apply? [yes] [no] [edit]
+```
+
+If the user accepts (or edits), record it as `Models:` / `Effort:` lines in Step 3. If declined or not warranted, write nothing.
+
 ### Step 3 — Write the task
 
 Create the file `maw/tasks/pending/TASK-{NNN}/task.md` with this format:
@@ -76,6 +93,8 @@ Type: {feature|bugfix|refactor|chore}
 Mode: {full|small-fix|brainstorm|deep-research}
 Priority: {high|medium|low}
 Branch: {type}/{kebab-case-title}
+{Models: default=opus, code-reviewer=opus}   <- optional, only if reinforced in Step 2.6
+{Effort: code-reviewer=high, qa=high}        <- optional, only if reinforced in Step 2.6
 
 ## Description
 {Clear description of what needs to be done. Include context the user provided.
@@ -97,6 +116,7 @@ Reference specific files/endpoints/components if mentioned.}
 - Description: 2-5 sentences. Specific, not vague. Include file/component references if user provided them.
 - Acceptance criteria: testable, atomic, checkbox format. Always include "Existing tests pass" as the last criterion. For `brainstorm` and `deep-research` modes, criteria describe what the plan/report must cover rather than runtime behavior.
 - No `Status` field inside the file — the parent directory (`pending/`, `in_progress/`, etc.) is the status.
+- `Models:` / `Effort:` lines: optional, written only if Step 2.6 reinforcement was accepted. Syntax: comma-separated tokens, each `default=<v>` (task-wide) or `<agent-name>=<v>` (one agent). Models: `sonnet|opus|haiku`. Effort: `low|medium|high`. Agent names are the 8 stems (`clarifier`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`). These beat `maw/settings.json` for this task only. Omit the lines entirely when not reinforced.
 
 ### Step 4 — Confirm and save
 

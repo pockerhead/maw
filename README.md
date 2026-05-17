@@ -163,13 +163,27 @@ The tradeoff: if the cost of shipping a bug exceeds the cost of running the pipe
 
 ## Settings
 
-First run asks about branching preference. Saved to `maw/settings.json`:
+First run asks two things, both saved to `maw/settings.json`.
+
+**Branching** (`worktree_mode`):
 
 | Value | Behavior |
 |---|---|
 | `always` | Git worktree per task (default) |
 | `never` | Feature branch only |
 | `ask` | Prompt each time |
+
+**Agent model.** Every spawned agent runs on `sonnet` by default. On first run MAW asks whether to keep all agents on sonnet or customize per agent. Overrides are stored as a map and applied at spawn time via the Task tool's `model` parameter:
+
+```json
+{
+  "worktree_mode": "always",
+  "agent_model": "sonnet",
+  "agent_model_overrides": { "planner": "opus", "code-reviewer": "opus" }
+}
+```
+
+Override keys are agent names: `clarifier`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`. Accepted models: `sonnet`, `opus`, `haiku`. Edit `maw/settings.json` directly to change it later.
 
 ## License
 

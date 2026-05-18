@@ -122,14 +122,17 @@ maw/tasks/done/TASK-001/
 ├── IMPL_SUMMARY.md   ← what was implemented
 ├── IMPL_REVIEW.md    ← code review findings
 ├── FIX_SUMMARY.md    ← what was fixed after review
-└── QA_REPORT.md      ← test results
+├── QA_REPORT.md      ← test results
+└── metrics.md        ← per-agent tokens / tool uses / duration + task total
 ```
 
-**small-fix:** task.md + IMPL_SUMMARY.md + IMPL_REVIEW.md + FIX_SUMMARY.md + QA_REPORT.md
+`metrics.md` is written by the orchestrator (not by agents — they never see it). One row per agent spawn, including retries and re-spawns, parsed from each Task result's usage trailer, with a `TOTAL` row summing the whole task. Present in every mode.
 
-**brainstorm:** task.md + TASK_FINAL.md + PLAN.md + PLAN_V2.md + PLAN_FINAL.md
+**small-fix:** task.md + IMPL_SUMMARY.md + IMPL_REVIEW.md + FIX_SUMMARY.md + QA_REPORT.md + metrics.md
 
-**deep-research:** task.md + PLAN.md (research report) + PLAN_V2.md + PLAN_FINAL.md
+**brainstorm:** task.md + TASK_FINAL.md + PLAN.md + PLAN_V2.md + PLAN_FINAL.md + metrics.md
+
+**deep-research:** task.md + PLAN.md (research report) + PLAN_V2.md + PLAN_FINAL.md + metrics.md
 
 ## How it compares
 

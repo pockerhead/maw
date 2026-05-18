@@ -193,7 +193,7 @@ git worktree add $WORK_ROOT -b $BRANCH
 
 All subsequent agents work exclusively inside `$WORK_ROOT/`. They must not touch the main branch.
 
-The task folder is available at `$WORK_ROOT/maw/tasks/in_progress/$TASK_ID/` — this is where all artifacts are written.
+The task folder is available at `$WORK_ROOT/maw/tasks/in_progress/$TASK_ID/` — this is where all artifacts are written. Create `metrics.md` there now (see the Metrics ledger section) before any agent is spawned.
 
 Define shorthands for prompts:
 - `TASK_DIR=maw/tasks/in_progress/$TASK_ID`
@@ -210,7 +210,7 @@ git checkout -b $BRANCH
 
 All subsequent agents work in the repo root directory. They must not push to main.
 
-The task folder is available at `maw/tasks/in_progress/$TASK_ID/` — this is where all artifacts are written.
+The task folder is available at `maw/tasks/in_progress/$TASK_ID/` — this is where all artifacts are written. Create `metrics.md` there now (see the Metrics ledger section) before any agent is spawned.
 
 Define shorthands for prompts:
 - `TASK_DIR=maw/tasks/in_progress/$TASK_ID`
@@ -282,6 +282,8 @@ Read `agents/qa.md`. For `small-fix` mode, follow the small-fix note in the agen
 
 ### Step 10 — Wrap up
 
+**First, regardless of mode or verdict:** append the `**TOTAL**` row to `{WORK_ROOT}/{TASK_DIR}/metrics.md` (see the Metrics ledger section) before the status-move commands below, so the totals land in the same commit as the final status move.
+
 **Mode gate for plan-only modes:** if `MODE` is `brainstorm` or `deep-research`:
 
 1. Verify `{WORK_ROOT}/{TASK_DIR}/PLAN_FINAL.md` exists. If not, something went wrong — report to the user and stop.
@@ -334,6 +336,31 @@ Read `agents/qa.md`. For `small-fix` mode, follow the small-fix note in the agen
 
 ---
 
+## Metrics ledger
+
+Every task folder carries a `metrics.md` next to `task.md`: `{WORK_ROOT}/{TASK_DIR}/metrics.md`. It is a pure accounting artifact — it is **never** substituted into any agent prompt, so agents do not see it. It rides with the task folder through every status move and, in git-tracked mode, is committed by the existing `git add maw/tasks/` at each transition (no extra commit logic).
+
+**Create it once**, right after the task folder is in place in `in_progress/` (Step 1), before the first spawn:
+
+```markdown
+# Metrics — TASK-NNN
+
+| # | Step | Agent | Model | Effort | Outcome | Tool uses | Tokens | Duration |
+|---|------|-------|-------|--------|---------|-----------|--------|----------|
+```
+
+**After every agent spawn returns** — every agent, every step, including clarifier, plan reviewers, QA, and any retry or re-spawn — read the `<usage>` trailer of the Task result. It looks like:
+
+```
+<usage>total_tokens: 42889
+tool_uses: 16
+duration_ms: 91043</usage>
+```
+
+Append one row: incrementing `#`, the step number, the agent name (suffix `(retry)` / `(re-spawn N)` if it is not the first spawn of that agent), the resolved model and effort, a short outcome (verdict like `PASS`/`NEEDS_WORK`/`SHIP`, or `ok` / `no-output`), then `tool_uses`, `total_tokens`, and `duration_ms` rendered as `Xm Ys`. One spawn = one row; nothing is overwritten. If a result has no `<usage>` trailer, write `n/a` in those three columns rather than guessing.
+
+**At wrap-up (Step 10), before the final status move**, append a `**TOTAL**` row: sum of `Tokens`, sum of `Tool uses`, sum of `Duration`, and put the spawned-agent count in the Agent column (e.g. `9 spawns / 8 agents`). This row is the per-task total across all agents spawned within the task.
+
 ## Adversarial framing
 
 Every review agent (Plan Rev 1, Plan Rev 2, Code Rev, Fixer, QA) receives the framing: **"the previous agent was on a weaker model"**. This is intentional. It triggers skepticism and forces the agent to verify claims against actual code rather than trusting what was written. The orchestrator (you) always uses this framing when spawning review agents — even if in reality all agents run on the same model.
@@ -347,6 +374,7 @@ The framing comes with an implicit constraint: **change only what you can verify
 - Never implement anything yourself. You only spawn agents and move files/folders.
 - Each agent is a fresh Task call with no conversation history — all context must be in the spawn prompt.
 - Every Task spawn passes a `model` parameter and (if not `medium`) an effort directive, both resolved via the Step 0.6 precedence (task.md beats settings.json). Never spawn without resolving them.
+- After every Task spawn returns, append a row to `metrics.md` from the result's `<usage>` trailer (see the Metrics ledger section). No spawn is exempt — clarifier, reviewers, QA, retries, re-spawns all get a row.
 - If a Task call fails or produces no output file, retry once with an explicit instruction to write the output file before finishing.
 - Never merge to main without user confirmation.
 - If any agent produces a FAIL verdict: pause, report to user, wait for instructions before continuing.

@@ -174,6 +174,35 @@ Parse each line as comma-separated tokens: `default=<v>` (or a bare `<v>`) sets 
 
 This is the only thing that varies per agent — pipeline shape and the rest of each prompt are unaffected.
 
+### Step 0.7 — Project context overlay (generic; no-op when absent)
+
+Define `PCTX = {WORK_ROOT}/maw/project-context`. This is an optional, project-supplied overlay authored and maintained by the `/maw-context` skill. The base pipeline knows only the contract below — it never contains any project's actual content.
+
+**At every agent spawn below** — every stage, every retry, every re-spawn — after the spawn prompt is built (with model/effort already resolved) and before calling the Task tool:
+
+- If `PCTX/README.md` does **not** exist → spawn the prompt unchanged. The pipeline behaves exactly as with no overlay. This is the default for any generic project; the base is byte-for-byte unaffected.
+- If it **exists** → read it and append this block verbatim to the **end** of the spawn prompt:
+
+  ```
+  <!-- PROJECT_CONTEXT -->
+  ## Project context (NORMATIVE — overrides the generic guidance above on any conflict)
+
+  {contents of PCTX/README.md, verbatim}
+
+  ---
+  If something in your step contradicts the project context above, or you hit a
+  durable rule or lesson worth recording, DO NOT edit the project context.
+  Append a dated entry to {TASK_DIR}/PCTX_PROPOSALS.md (create it if absent)
+  stating what and why. Folding proposals into the real project context is a
+  separate curated step — not yours.
+  ```
+
+  Substitute `{TASK_DIR}` to the real path so the agent can write it. The whole `PCTX/README.md` is inlined as-is — there is no per-stage filtering and no include resolution; the project author keeps that one file tight because it rides into every agent on every stage.
+
+**Precedence (generic; the same lattice applies to model/effort in Step 0.6):** an inline override in `task.md` beats the project context, which beats the base/agent default — `task.md > PCTX > base`. The injected header states this so the override is visible to the agent, not silent.
+
+This is the only project-specific seam in the pipeline: one conditional read plus one append. Agent prompt files in `agents/` are never modified for project specifics.
+
 ### Step 1 — Create branch (and worktree if enabled)
 
 Read the `Branch:` field from the task's `task.md` to get the branch name (e.g. `feature/add-rate-limiting`).
@@ -190,6 +219,16 @@ git worktree remove --force $WORK_ROOT 2>/dev/null || true
 git branch -D $BRANCH 2>/dev/null || true
 git worktree add $WORK_ROOT -b $BRANCH
 ```
+
+**If local-only mode** (`maw/` IS in `.gitignore`): `maw/` is gitignored, so the freshly-added worktree does **not** contain it. Copy the task folder and the project-context overlay (if present) into the worktree, or every agent — and the Step 0.7 overlay — will silently see nothing:
+
+```bash
+mkdir -p $WORK_ROOT/maw/tasks/in_progress
+cp -r maw/tasks/in_progress/$TASK_ID $WORK_ROOT/maw/tasks/in_progress/
+[ -d maw/project-context ] && cp -r maw/project-context $WORK_ROOT/maw/
+```
+
+**If git-tracked mode** (`maw/` NOT in `.gitignore`): nothing to copy — both are already in the checkout.
 
 All subsequent agents work exclusively inside `$WORK_ROOT/`. They must not touch the main branch.
 
@@ -375,6 +414,7 @@ The framing comes with an implicit constraint: **change only what you can verify
 - Each agent is a fresh Task call with no conversation history — all context must be in the spawn prompt.
 - Every Task spawn passes a `model` parameter and (if not `medium`) an effort directive, both resolved via the Step 0.6 precedence (task.md beats settings.json). Never spawn without resolving them.
 - After every Task spawn returns, append a row to `metrics.md` from the result's `<usage>` trailer (see the Metrics ledger section). No spawn is exempt — clarifier, reviewers, QA, retries, re-spawns all get a row.
+- Before every Task spawn, apply the Step 0.7 project-context overlay (no-op if `PCTX/README.md` is absent). Never edit files in `agents/` for project specifics — the overlay is the only seam. Never let a pipeline agent write into `PCTX/`; agents only append proposals to the task-local `PCTX_PROPOSALS.md`.
 - If a Task call fails or produces no output file, retry once with an explicit instruction to write the output file before finishing.
 - Never merge to main without user confirmation.
 - If any agent produces a FAIL verdict: pause, report to user, wait for instructions before continuing.

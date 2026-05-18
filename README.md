@@ -76,6 +76,7 @@ Add to your project's `CLAUDE.md`:
 ## Skills
 @.claude/skills/maw-execute-task/SKILL.md
 @.claude/skills/maw-tasks/SKILL.md
+@.claude/skills/maw-context/SKILL.md
 ```
 
 ## Usage
@@ -133,6 +134,21 @@ maw/tasks/done/TASK-001/
 **brainstorm:** task.md + TASK_FINAL.md + PLAN.md + PLAN_V2.md + PLAN_FINAL.md + metrics.md
 
 **deep-research:** task.md + PLAN.md (research report) + PLAN_V2.md + PLAN_FINAL.md + metrics.md
+
+Plus `PCTX_PROPOSALS.md` in any task where an agent proposed a project-context change (see below).
+
+## Project context overlay
+
+The base pipeline is 100% generic — it contains no knowledge of your project. Project-specific invariants, tooling, lessons, and custom skills live in **one file**: `maw/project-context/README.md`, authored with `/maw-context`.
+
+```
+/maw-context            # scaffold the overlay, or add an invariant/lesson/tool
+/maw-context --review   # fold pending agent proposals into the overlay
+```
+
+If that file exists, the orchestrator appends it verbatim to the end of every agent spawn prompt, marked NORMATIVE — it overrides generic guidance on conflict. Precedence: `task.md inline override > project context > base default`. If it does not exist, the pipeline behaves byte-for-byte as it would with no overlay — this is the default and requires nothing.
+
+It is one prose file, kept short by discipline (it rides into every agent on every stage). No manifest, no per-stage files, no templating. Agents never edit it: when an agent hits a contradiction or a durable lesson it appends a dated entry to that task's `PCTX_PROPOSALS.md`, and folding proposals into the real overlay is a deliberate, human-gated step via `/maw-context --review`. The only base change this required is one conditional step in the orchestrator plus the `maw-context` skill — the eight agent prompts are untouched.
 
 ## How it compares
 

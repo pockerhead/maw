@@ -116,8 +116,8 @@ Skip this step entirely if `maw/project-context/domains/` does not exist — a g
 If it does exist: list the available modules (`maw/project-context/domains/*.md`) and read the `## Domain catalog` in `maw/project-context/README.md`. Match the task against the catalog triggers. For each domain this task plausibly touches, propose it. This recorded decision is what the pipeline pre-injects into the planner and reviewers — it is more reliable than the orchestrator guessing from prose at execute time, and you have the user here to confirm.
 
 ```
-This task looks like it touches: godot-bridge, persistence
-(matched catalog triggers: files under crates/*_godot/**, any DB migration)
+This task looks like it touches: auth, persistence
+(matched catalog triggers: files under src/auth/**, any DB migration)
 Pre-load these domain modules for the pipeline? [yes] [edit] [no]
 ```
 
@@ -136,7 +136,7 @@ Priority: {high|medium|low}
 Branch: {type}/{kebab-case-title}
 {Models: default=opus, code-reviewer=opus}   <- optional, only if reinforced in Step 2.6
 {Effort: code-reviewer=high, qa=high}        <- optional, only if reinforced in Step 2.6
-{Domains: godot-bridge, persistence}         <- optional, only if matched in Step 2.8
+{Domains: auth, persistence}                 <- optional, only if matched in Step 2.8
 
 ## Description
 {Clear description of what needs to be done. Include context the user provided.

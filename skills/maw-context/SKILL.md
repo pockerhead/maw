@@ -55,11 +55,11 @@ Create `maw/project-context/README.md` with this skeleton. Do not invent project
 ## Domain catalog
 <!-- One line per domain. The trigger MUST be zero-knowledge-observable:
      file/path globs, literal symbol / import / command tokens. NEVER a
-     concept name ("the Godot bridge") — a fresh agent with no project
+     concept name ("the auth layer") — a fresh agent with no project
      knowledge must decide from the trigger alone. Module path uses the
      {PCTX} placeholder; the orchestrator substitutes the real path. -->
 - trigger: <observable signal, e.g. files under `src/billing/**` or any `Decimal` use>  → {PCTX}/domains/money.md
-- trigger: <observable signal, e.g. any file under `crates/*_godot/**` or call to `gd_*`> → {PCTX}/domains/godot-bridge.md
+- trigger: <observable signal, e.g. any file under `src/auth/**` or a call to `verify_token`> → {PCTX}/domains/auth.md
 
 HARD RULE: before you plan or write any part whose work matches a trigger
 above — even if this task was not framed as being in that domain — you MUST

@@ -25,20 +25,21 @@ Compare:
 ![MAW pipeline architecture](assets/maw_pipeline_architecture.svg)
 
 Key design decisions:
-- **No shared context** — agents communicate only through files (task.md, PLAN.md, diffs). No chat history carries over. This is a common pattern in adversarial pipelines, but MAW enforces it across all 7 stages including planning.
+- **No shared context** — agents communicate only through files (task.md, PLAN.md, diffs). No chat history carries over. This is a common pattern in adversarial pipelines, but MAW enforces it across every stage including planning.
 - **Adversarial by default** — each agent's prompt includes the assumption that the previous agent was unreliable. Not hostile, but skeptical.
+- **Premise challenge** — before planning, an isolated agent fed only the task and the real system (never the orchestrator's framing, the plan, or any summary) tests whether the *premise itself* is wrong, and halts to the human if it is. Every other stage verifies the solution within the premise and inherits its lineage; this is the one structural check that attacks the frame. It reduces — does not eliminate — the "pipeline faithfully executes a wrong premise" failure; the human remains the last line.
 - **All state in git** — artifacts live in the task folder on a feature branch. Everything is inspectable and recoverable.
 
 ## Modes
 
-Not every task needs 7 agents. MAW has four modes that control which part of the pipeline runs:
+Not every task needs the whole pipeline. MAW has four modes that control which part runs:
 
 | Mode | Pipeline | When to use | ~Tokens |
 |---|---|---|---|
-| `full` | Clarifier → Planner → Plan Review x2 → Implementer → Code Review → Fixer → QA | Features, migrations, auth/payments | 280–560k |
+| `full` | Clarifier → Premise Challenge → Planner → Plan Review x2 → Implementer → Code Review → Fixer → QA | Features, migrations, auth/payments | 280–560k |
 | `small-fix` | Implementer → Code Review → Fixer → QA | Bug fixes, small changes with clear scope | 120–200k |
-| `brainstorm` | Clarifier → Planner → Plan Review x2 | Explore approaches before committing to implementation | 100–180k |
-| `deep-research` | Planner (web search) → Plan Review x2 | Research best practices, compare solutions, audit approaches | 80–150k |
+| `brainstorm` | Clarifier → Premise Challenge → Planner → Plan Review x2 | Explore approaches before committing to implementation | 100–180k |
+| `deep-research` | Premise Challenge → Planner (web search) → Plan Review x2 | Research best practices, compare solutions, audit approaches | 80–150k |
 
 When you create a task, MAW analyzes the description and suggests a mode:
 
@@ -117,6 +118,7 @@ Every run leaves a full audit trail in the task folder. Artifacts depend on mode
 maw/tasks/done/TASK-001/
 ├── task.md           ← original task
 ├── TASK_FINAL.md     ← clarified requirements
+├── PREMISE_CHALLENGE.md ← isolated premise audit (holds / suspect, primary-source cited)
 ├── PLAN.md           ← initial plan
 ├── PLAN_V2.md        ← reviewed plan
 ├── PLAN_FINAL.md     ← final plan after two review passes
@@ -131,9 +133,9 @@ maw/tasks/done/TASK-001/
 
 **small-fix:** task.md + IMPL_SUMMARY.md + IMPL_REVIEW.md + FIX_SUMMARY.md + QA_REPORT.md + metrics.md
 
-**brainstorm:** task.md + TASK_FINAL.md + PLAN.md + PLAN_V2.md + PLAN_FINAL.md + metrics.md
+**brainstorm:** task.md + TASK_FINAL.md + PREMISE_CHALLENGE.md + PLAN.md + PLAN_V2.md + PLAN_FINAL.md + metrics.md
 
-**deep-research:** task.md + PLAN.md (research report) + PLAN_V2.md + PLAN_FINAL.md + metrics.md
+**deep-research:** task.md + PREMISE_CHALLENGE.md + PLAN.md (research report) + PLAN_V2.md + PLAN_FINAL.md + metrics.md
 
 Plus `PCTX_PROPOSALS.md` in any task where an agent proposed a project-context change (see below).
 
@@ -154,7 +156,7 @@ If `maw/project-context/` does not exist, the pipeline behaves byte-for-byte as 
 
 A subagent inherits nothing — not `CLAUDE.md`, not `@`-imports, not notebooks (a verified Claude Code invariant the pipeline is built around), so everything needed must be injected or self-`Read`. Project context is normative as **law to satisfy, not a claim to audit** — review agents verify the code satisfies it; whether the law itself is right is human-gated via `/maw-context --review`. Agents never edit the overlay: they append dated entries to that task's `PCTX_PROPOSALS.md`, folded in deliberately.
 
-This is reduced, human-authored machinery — a hand-written catalog and human-declared `Domains:`, no resolution engine, no token-budget gate, no includes. The base change is the orchestrator plus the `maw-context`/`maw-tasks` skills; the eight agent prompts are untouched.
+This is reduced, human-authored machinery — a hand-written catalog and human-declared `Domains:`, no resolution engine, no token-budget gate, no includes. The base change is the orchestrator plus the `maw-context`/`maw-tasks` skills; the overlay seam never modifies the agent prompts.
 
 ## Roadmap graph
 
@@ -214,7 +216,7 @@ First run asks two things, both saved to `maw/settings.json`.
 }
 ```
 
-Agent names: `clarifier`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`. Models: `sonnet`, `opus`, `haiku`. Effort: `low`, `medium`, `high`. Edit `maw/settings.json` directly to change the defaults later.
+Agent names: `clarifier`, `premise-challenge`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`. Models: `sonnet`, `opus`, `haiku`. Effort: `low`, `medium`, `high`. Edit `maw/settings.json` directly to change the defaults later.
 
 **Per-task override.** A task can override both for itself via optional `task.md` header lines, which beat `settings.json` for that task only:
 

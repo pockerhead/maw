@@ -23,7 +23,7 @@ Pipeline settings are stored in `maw/settings.json`. The orchestrator checks thi
 }
 ```
 
-Agent names everywhere are the agent file stems: `clarifier`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`.
+Agent names everywhere are the agent file stems: `clarifier`, `premise-challenge`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`.
 
 - `worktree_mode`: `always` — always create a git worktree for the task (default if user picks this); `never` — work on a feature branch directly, no worktree; `ask` — ask the user each time before starting a task
 - `agent_model`: model every spawned agent runs on by default. `sonnet` (default), `opus`, or `haiku`.
@@ -43,10 +43,10 @@ The `Mode:` field in `task.md` controls which subset of the pipeline runs. Valid
 
 | Mode | Pipeline | Stops after |
 |---|---|---|
-| `full` (default) | Clarifier -> Planner -> Plan Rev x2 -> Implementer -> Code Rev -> Fixer -> QA | QA_REPORT.md |
+| `full` (default) | Clarifier -> Premise Challenge -> Planner -> Plan Rev x2 -> Implementer -> Code Rev -> Fixer -> QA | QA_REPORT.md |
 | `small-fix` | Implementer -> Code Rev -> Fixer -> QA | QA_REPORT.md |
-| `brainstorm` | Clarifier -> Planner -> Plan Rev x2 | PLAN_FINAL.md (no code written) |
-| `deep-research` | Planner (web search emphasis) -> Plan Rev x2 | PLAN_FINAL.md (research report, no code) |
+| `brainstorm` | Clarifier -> Premise Challenge -> Planner -> Plan Rev x2 | PLAN_FINAL.md (no code written) |
+| `deep-research` | Premise Challenge -> Planner (web search emphasis) -> Plan Rev x2 | PLAN_FINAL.md (research report, no code) |
 
 **Backward compatibility:** if the `Mode:` field is missing from `task.md`, default to `full`.
 
@@ -125,7 +125,7 @@ Store the effective choice for this run in a variable `USE_WORKTREE` (true/false
 
 ```
 1. Model for pipeline agents?
-   a. Sonnet (default) — all 8 agents on sonnet.
+   a. Sonnet (default) — all 9 agents on sonnet.
    b. Customize — sonnet by default, pick a different model for specific agents.
 2. Effort level for pipeline agents?
    a. Medium (default) — no extra directive.
@@ -291,6 +291,19 @@ Read `agents/clarifier.md`. Substitute variables and task contents. Spawn the ag
 
 If skipped, write `{WORK_ROOT}/{TASK_DIR}/TASK_FINAL.md` with the original task content yourself.
 
+### Step 2.5 — Premise challenge (isolated; conditional)
+
+**Mode gate:** skip if `MODE` is `small-fix` (scope is contained, no planning stage — the premise risk is low and is covered later by the repro discipline). Runs in `full`, `brainstorm`, `deep-research`. Runs **before** the planner on purpose: a rotten premise must be caught before any planning is spent on it.
+
+Why this exists: every later stage verifies the *solution within the premise* and inherits the premise's lineage (task.md → TASK_FINAL → plan → reviews). Nothing else attacks the premise itself. This is the one isolated check that does, and the only thing that historically catches a wrong premise is a concrete counter-example from outside the lineage.
+
+Read `agents/premise-challenge.md`. Substitute variables. **Pass it only** the premise source (`TASK_FINAL.md` if it exists, else `task.md`) and the working/repo paths — **never** your own root-cause writeup, a summary, the plan, or any reviewer note. The agent investigates primary sources (code at `file:line`, an executable result it runs, the raw failing artifact) itself; isolation from the lineage is the whole point. Spawn the agent. Do **not** apply the "previous agent was on a weaker model" framing here — this agent has its own evidence-bound framing; that adversarial framing is for solution reviewers only.
+
+**After agent finishes:** read `{WORK_ROOT}/{TASK_DIR}/PREMISE_CHALLENGE.md`.
+
+- Verdict `PREMISE HOLDS` → proceed to Step 3.
+- Verdict `PREMISE SUSPECT` → **treat exactly like a FAIL verdict** (see Rules): pause, surface `PREMISE_CHALLENGE.md` to the user verbatim, wait for instructions. Do not spawn the planner. The premise, not the plan, is what is in question — the user decides whether to amend `task.md`/`TASK_FINAL.md` and re-run, or override.
+
 ### Step 3 — Planner agent
 
 **Mode gate:** skip if `MODE` is `small-fix`.
@@ -358,7 +371,7 @@ Read `agents/qa.md`. For `small-fix` mode, follow the small-fix note in the agen
    ```bash
    git add maw/tasks/ && git commit -m "task: finalize $TASK_ID ($MODE)"
    ```
-4. Report to the user: mode, task ID, one-line summary of PLAN_FINAL.md, list of artifacts (`TASK_FINAL.md` if present, `PLAN.md`, `PLAN_V2.md`, `PLAN_FINAL.md`).
+4. Report to the user: mode, task ID, one-line summary of PLAN_FINAL.md, list of artifacts (`TASK_FINAL.md` if present, `PREMISE_CHALLENGE.md` unless small-fix, `PLAN.md`, `PLAN_V2.md`, `PLAN_FINAL.md`).
 5. Do NOT offer to merge — nothing was implemented. No branch merge is applicable unless the user explicitly asks (e.g. to keep the plan artifacts on main).
 6. Stop here.
 
@@ -420,13 +433,15 @@ duration_ms: 91043</usage>
 
 Append one row: incrementing `#`, the step number, the agent name (suffix `(retry)` / `(re-spawn N)` if it is not the first spawn of that agent), the resolved model and effort, a short outcome (verdict like `PASS`/`NEEDS_WORK`/`SHIP`, or `ok` / `no-output`), then `tool_uses`, `total_tokens`, and `duration_ms` rendered as `Xm Ys`. One spawn = one row; nothing is overwritten. If a result has no `<usage>` trailer, write `n/a` in those three columns rather than guessing.
 
-**At wrap-up (Step 10), before the final status move**, append a `**TOTAL**` row: sum of `Tokens`, sum of `Tool uses`, sum of `Duration`, and put the spawned-agent count in the Agent column (e.g. `9 spawns / 8 agents`). This row is the per-task total across all agents spawned within the task.
+**At wrap-up (Step 10), before the final status move**, append a `**TOTAL**` row: sum of `Tokens`, sum of `Tool uses`, sum of `Duration`, and put the spawned-agent count in the Agent column (e.g. `10 spawns / 9 agents`). This row is the per-task total across all agents spawned within the task.
 
 ## Adversarial framing
 
 Every review agent (Plan Rev 1, Plan Rev 2, Code Rev, Fixer, QA) receives the framing: **"the previous agent was on a weaker model"**. This is intentional. It triggers skepticism and forces the agent to verify claims against actual code rather than trusting what was written. The orchestrator (you) always uses this framing when spawning review agents — even if in reality all agents run on the same model.
 
 The framing comes with an implicit constraint: **change only what you can verify is wrong**. Rewriting correct code "to be safe" introduces new bugs. If uncertain — document the concern in the review artifact and let the next agent decide.
+
+This framing reduces, but cannot eliminate, a deeper defect: every solution reviewer verifies the solution *within the premise the orchestrator framed* and inherits that premise's lineage; same-lineage reviewers raise false-consensus confidence, not accuracy, and a model cannot repair a wrong premise from inside the context that contains it (arXiv 2506.01332, 2310.01798; the fix is independent evidence, not a fiercer arguer — arXiv 2506.13609). Step 2.5's premise-challenge is the structural mitigation: an isolated agent fed only the task and the real system, never the lineage. It does **not** receive the "previous agent was weaker" framing — that points at prior *work*, not at the *frame*. The defect is reduced, not removed; the human remains the last line on the residue.
 
 ---
 
@@ -456,7 +471,8 @@ This is why the Step 0.7 overlay exists at all, and why it must be inlined rathe
 - `maw/ROADMAP.md` (if present) is a derived view of the task.md `## Dependencies` sections — never authoritative. On any disagreement, task.md wins and the graph is regenerated, never the reverse. It is optional; absence is not an error.
 - If a Task call fails or produces no output file, retry once with an explicit instruction to write the output file before finishing.
 - Never merge to main without user confirmation.
-- If any agent produces a FAIL verdict: pause, report to user, wait for instructions before continuing.
+- If any agent produces a FAIL verdict — or `premise-challenge` returns `PREMISE SUSPECT` — pause, report to user (surface the artifact verbatim), wait for instructions before continuing.
+- **Primary source over proxy (premise audit).** For any task that is a retry, a relaunch, or marked premise-suspect, hand `premise-challenge` the primary artifact (the raw failing test / log / repro / code), never your own writeup or a summary of it. A `PREMISE_CHALLENGE` verdict that cites only a derived artifact (a summary, a prior mandate, a log line used as a proxy for a fact) is invalid — it must cite a primary source: code at `file:line`, an executable result, or a direct observation of the real system. A repro or observation predicate is a deliverable to be produced, not a conclusion to be asserted. What counts as the primary source / repro harness for a given project is supplied by that project's `PCTX` overlay, not hardcoded here.
 - Status changes are folder moves (`mv maw/tasks/pending/X maw/tasks/in_progress/X`), not edits to a file.
 - In git-tracked mode (maw/ not in .gitignore): always commit status transitions so they propagate correctly through worktrees and merges.
 - In local-only mode (maw/ in .gitignore): skip all maw/tasks/ commits — only commit code changes.

@@ -30,6 +30,13 @@ Implementation summary:
 Working directory: {WORK_ROOT}/
 Task dir: {WORK_ROOT}/{TASK_DIR}/
 
+Disconfirmation first (mandatory, before anything else):
+BEFORE you evaluate anything: write down the single most concrete input,
+case, or counter-example that would make the thing you are reviewing WRONG.
+Then actively go looking for that case in the actual code/artifacts. Only
+after that search may you proceed to the rest of your review. Report the
+counter-example you tested and whether it held.
+
 Instructions:
 - Open every changed file fully. Read all the code.
 - Check against PLAN_FINAL.md — did the implementation actually follow the plan?

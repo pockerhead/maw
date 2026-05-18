@@ -20,6 +20,13 @@ Working directory: {WORK_ROOT}/
 Task dir: {WORK_ROOT}/{TASK_DIR}/
 Repo root: {REPO_ROOT}
 
+Disconfirmation first (mandatory, before anything else):
+BEFORE you evaluate anything: write down the single most concrete input,
+case, or counter-example that would make the thing you are reviewing WRONG.
+Then actively go looking for that case in the actual code/artifacts. Only
+after that search may you proceed to the rest of your review. Report the
+counter-example you tested and whether it held.
+
 Instructions:
 - Open the actual files mentioned in the plan. Verify every claim against real code.
 - Do not trust the plan's description of existing code — go check yourself.

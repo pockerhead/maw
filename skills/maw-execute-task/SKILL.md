@@ -334,6 +334,8 @@ Read `agents/qa.md`. For `small-fix` mode, follow the small-fix note in the agen
 
 **First, regardless of mode or verdict:** append the `**TOTAL**` row to `{WORK_ROOT}/{TASK_DIR}/metrics.md` (see the Metrics ledger section) before the status-move commands below, so the totals land in the same commit as the final status move.
 
+**Also regardless of mode or verdict:** if `maw/ROADMAP.md` exists, regenerate it after the status move from the remaining `maw/tasks/pending/` task.md `## Dependencies` sections (same generation rule as `/maw-tasks` Step 5). This task has now left `in_progress/`, so its pending dependents must be re-derived — a `blocked by` whose blocker is now in `done/` is satisfied and that edge drops; one whose blocker went to `blocked/` stays, annotated. This is the symmetric counterpart to the Step 0 reconcile (Step 0 handles `pending→in_progress`, this handles `in_progress→done|blocked`). In git-tracked mode include it in the same status-move commit (`git add maw/`). If `maw/ROADMAP.md` does not exist, skip.
+
 **Mode gate for plan-only modes:** if `MODE` is `brainstorm` or `deep-research`:
 
 1. Verify `{WORK_ROOT}/{TASK_DIR}/PLAN_FINAL.md` exists. If not, something went wrong — report to the user and stop.

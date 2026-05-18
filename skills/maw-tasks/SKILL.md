@@ -174,7 +174,7 @@ After creating or editing any task, regenerate `maw/ROADMAP.md`. It is a **deriv
 
 Scope and format, deliberately minimal:
 
-- **Only `pending/` tasks.** Tasks in `in_progress/` / `done/` / `blocked/` are not in the graph. If a pending task is blocked by a non-pending one, note it inline as `[waits on TASK-XXX (in_progress)]`.
+- **Only `pending/` tasks** are nodes. When a pending task's `blocked by TASK-XXX` points at a task that is not in `pending/`, resolve by where TASK-XXX actually is: in `done/` → the blocker is satisfied, **drop that edge** (the task is free); in `in_progress/` → keep it, annotate `[waits on TASK-XXX (in_progress)]`; in `blocked/` → keep it, annotate `[waits on TASK-XXX (blocked)]`. (`task.md` is never edited — this resolution is the graph's interpretation of a still-declared dependency.)
 - A short tree of **hard blockers** (`blocked by`): parent above, blocked children indented under it with `└──` / `├──`.
 - **Soft orderings** (`prefer after`) and **`unblocks`** as a compact bullet list under the tree, one line each.
 - No project narrative, no status history, no per-task essays — just the dependency structure. Keep it scannable. If it is growing into prose, you are over-filling it.

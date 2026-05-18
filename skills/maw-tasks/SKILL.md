@@ -82,6 +82,33 @@ Apply? [yes] [no] [edit]
 
 If the user accepts (or edits), record it as `Models:` / `Effort:` lines in Step 3. If declined or not warranted, write nothing.
 
+### Step 2.7 — Infer dependencies and validate with the user
+
+Before writing the task, pass over the existing board to identify likely dependencies. Do this even if the user did not mention any — the `maw/ROADMAP.md` graph is only as good as the `## Dependencies` sections it is derived from, and the user often has cross-task context that is not obvious from one description.
+
+Process:
+
+1. **Surface scan.** Read the title plus the first few lines of the Description of every task in `pending/`, `in_progress/`, and `blocked/` (ignore `done/`). You are building a map of thematic overlap, not reading exhaustively.
+2. **Infer candidates** for the new task:
+   - **blocked by** — a task whose completion is a hard prerequisite for this one.
+   - **prefer after** — soft ordering: better done after, but not a hard block.
+   - **unblocks** — existing tasks that are waiting on this new one (inverse pointers).
+3. **Present and validate.** Show the inferred list compactly and ask the user to confirm or correct it. If you inferred nothing, still ask — "No obvious dependencies; did I miss a link to an existing task?" The user's final list is authoritative; do not argue.
+4. Only list relations where the thematic overlap is explicit and non-trivial. Guessing weak links wastes the user's attention. If, after validation, there are genuinely none, the task gets no `## Dependencies` section.
+
+Format for the prompt to the user:
+
+```
+Inferred dependencies for this task:
+- blocked by TASK-XXX — {one-line reason}
+- prefer after TASK-YYY — {one-line reason}
+- unblocks TASK-ZZZ — {what it enables}
+
+Correct? Anything to add or remove?
+```
+
+Record the confirmed list as the `## Dependencies` section in Step 3.
+
 ### Step 3 — Write the task
 
 Create the file `maw/tasks/pending/TASK-{NNN}/task.md` with this format:
@@ -100,6 +127,11 @@ Branch: {type}/{kebab-case-title}
 {Clear description of what needs to be done. Include context the user provided.
 Reference specific files/endpoints/components if mentioned.}
 
+## Dependencies
+- blocked by TASK-XXX — {one-line reason, hard prerequisite}
+- prefer after TASK-YYY — {one-line reason, soft ordering}
+- unblocks TASK-ZZZ — {what this enables when it lands}
+
 ## Acceptance criteria
 - [ ] {Criterion 1}
 - [ ] {Criterion 2}
@@ -115,6 +147,7 @@ Reference specific files/endpoints/components if mentioned.}
 - Branch: `{type}/{kebab-case-title}` derived from type and title. Example: `feature/add-rate-limiting`, `bugfix/fix-auth-timeout`, `refactor/extract-middleware`. This is used by MAW to name the worktree branch.
 - Description: 2-5 sentences. Specific, not vague. Include file/component references if user provided them.
 - Acceptance criteria: testable, atomic, checkbox format. Always include "Existing tests pass" as the last criterion. For `brainstorm` and `deep-research` modes, criteria describe what the plan/report must cover rather than runtime behavior.
+- Dependencies: write only the relations confirmed in Step 2.7. Fill only the lines that apply. If Step 2.7 concluded zero `blocked by` AND zero `prefer after` AND zero `unblocks`, **omit the whole `## Dependencies` section** — do not leave empty bullets or placeholders. `maw/ROADMAP.md` is derived from this section (Step 5).
 - No `Status` field inside the file — the parent directory (`pending/`, `in_progress/`, etc.) is the status.
 - `Models:` / `Effort:` lines: optional, written only if Step 2.6 reinforcement was accepted. Syntax: comma-separated tokens, each `default=<v>` (task-wide) or `<agent-name>=<v>` (one agent). Models: `sonnet|opus|haiku`. Effort: `low|medium|high`. Agent names are the 8 stems (`clarifier`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`). These beat `maw/settings.json` for this task only. Omit the lines entirely when not reinforced.
 

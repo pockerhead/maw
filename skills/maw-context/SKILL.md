@@ -11,7 +11,11 @@ You maintain the project-context overlay for the MAW pipeline. This is the **onl
 
 ## What the overlay is
 
-A single file: `maw/project-context/README.md`. The orchestrator's Step 0.7 reads it (if it exists) and appends it verbatim to the **end of every agent spawn prompt**, on every stage, under a header marking it NORMATIVE — it overrides generic guidance on conflict. Precedence is `task.md inline override > project context > base default`.
+Primary file: `maw/project-context/README.md`. The orchestrator's Step 0.7 reads it (if it exists) and appends it verbatim to the **end of every agent spawn prompt**, on every stage, under a header marking it NORMATIVE — it overrides generic guidance on conflict. Precedence is `task.md inline override > project context > base default`.
+
+Optional per-agent files: `maw/project-context/agents/<stem>.md`, where `<stem>` is one of the eight agent stems (`clarifier`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`). Such a file is appended **only** to that one agent's spawn, after the shared README. Use it only when a single stage needs context the others must not carry — keep shared knowledge in README so it is not duplicated per agent.
+
+**Pointers, not dumps.** A subagent inherits nothing — not `CLAUDE.md`, not `@`-imports, not the project notebook (verified Claude Code invariant). So the overlay may *point* at a canonical doc/lesson/notebook ("See `docs/architecture.md`. Key rules: …") and the orchestrator inlines only the few lines the current task needs, or instructs the agent to `Read` the path. Prefer pointer-plus-excerpt over pasting whole files — the excerpt is what reviewers actually see without a file read.
 
 Consequences that drive every rule below:
 
@@ -53,7 +57,14 @@ reviewers must see.
 
 ## Project skills
 <!-- Custom skills agents may invoke: name → when/which stage to call it. -->
+
+## Pointers
+<!-- Canonical docs / lessons / project notebook the orchestrator should pull
+     from per task: path → when it is relevant. The orchestrator inlines only
+     the lines the task needs; it does not paste whole files. -->
 ```
+
+Only create `maw/project-context/agents/<stem>.md` when the user explicitly has stage-specific context — do not scaffold empty per-agent files. Shared knowledge stays in `README.md`.
 
 Then run the Intake interview (Step 2) to fill the first real entries. If `maw/` is in `.gitignore` (local-only mode), remind the user that the overlay only reaches worktrees because the orchestrator copies it in — that path is already handled, no action needed from them.
 

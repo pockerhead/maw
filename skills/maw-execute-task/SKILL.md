@@ -86,6 +86,8 @@ If no pending tasks exist, report that to the user and stop.
 
 Also read the `Type:` field — useful for agent context but does not affect pipeline shape.
 
+**Roadmap reconcile (before any work).** If `maw/ROADMAP.md` exists, open it and check it against the actual `## Dependencies` sections of the task.md files in `maw/tasks/pending/`. `task.md` is the source of truth; `ROADMAP.md` is a derived view. If they disagree, regenerate the affected part of `ROADMAP.md` from task.md before continuing — never edit a task.md to match the graph. Then drop the task you just moved to `in_progress/` out of the pending graph. In git-tracked mode, fold this into the existing `task: start $TASK_ID` commit (`git add maw/`). If `maw/ROADMAP.md` does not exist, skip — it is optional and maintained by `/maw-tasks`.
+
 ### Step 0.5 — Check worktree mode
 
 **CLI override:** If the user invoked `/maw-execute-task --worktree`, set `USE_WORKTREE=true` and skip the rest of this step. If `/maw-execute-task --no-worktree`, set `USE_WORKTREE=false` and skip.
@@ -178,16 +180,22 @@ This is the only thing that varies per agent — pipeline shape and the rest of 
 
 Define `PCTX = {WORK_ROOT}/maw/project-context`. This is an optional, project-supplied overlay authored and maintained by the `/maw-context` skill. The base pipeline knows only the contract below — it never contains any project's actual content.
 
-**At every agent spawn below** — every stage, every retry, every re-spawn — after the spawn prompt is built (with model/effort already resolved) and before calling the Task tool:
+**At every agent spawn below** — every stage, every retry, every re-spawn — after the spawn prompt is built (with model/effort already resolved) and before calling the Task tool, assemble the project-context block from two optional sources:
 
-- If `PCTX/README.md` does **not** exist → spawn the prompt unchanged. The pipeline behaves exactly as with no overlay. This is the default for any generic project; the base is byte-for-byte unaffected.
-- If it **exists** → read it and append this block verbatim to the **end** of the spawn prompt:
+1. **Shared (all agents):** `PCTX/README.md` — applies to every agent.
+2. **Per-agent (this agent only):** `PCTX/agents/<stem>.md`, where `<stem>` is the agent file stem being spawned (`clarifier`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`) — same stems as the model/effort overrides. Use it only when a stage genuinely needs context the others do not.
+
+- If **neither** file exists → spawn the prompt unchanged. The pipeline behaves exactly as with no overlay; the base is byte-for-byte unaffected. This is the default for any generic project.
+- If **either** exists → append this block verbatim to the **end** of the spawn prompt (include only the parts that exist; per-agent goes after shared so it can refine it):
 
   ```
   <!-- PROJECT_CONTEXT -->
   ## Project context (NORMATIVE — overrides the generic guidance above on any conflict)
 
-  {contents of PCTX/README.md, verbatim}
+  {contents of PCTX/README.md, verbatim — omit this line and heading if absent}
+
+  ### For this stage (<stem>)
+  {contents of PCTX/agents/<stem>.md, verbatim — omit this subsection if absent}
 
   ---
   If something in your step contradicts the project context above, or you hit a
@@ -197,11 +205,13 @@ Define `PCTX = {WORK_ROOT}/maw/project-context`. This is an optional, project-su
   separate curated step — not yours.
   ```
 
-  Substitute `{TASK_DIR}` to the real path so the agent can write it. The whole `PCTX/README.md` is inlined as-is — there is no per-stage filtering and no include resolution; the project author keeps that one file tight because it rides into every agent on every stage.
+  Substitute `{TASK_DIR}` and `<stem>` to real values. Everything is inlined as-is — no include resolution, no token-budget engine. The project author keeps these files tight because the shared one rides into every agent on every stage; that discipline is the `maw-context` skill's job, not the orchestrator's.
+
+**Pointers, not dumps.** The overlay may *point* at canonical project docs / lessons / notebooks instead of pasting them (e.g. "See `docs/architecture.md`. Key rules: …"). When it does, the orchestrator follows the **Context propagation to subagents** discipline below: a subagent sees nothing the spawn prompt does not contain, so for a pointer the orchestrator must either inline the few relevant lines or instruct the agent to `Read` the path explicitly. The overlay declares the pointers; the orchestrator surgically inlines what the current task's risk area actually needs — never the whole referenced file.
 
 **Precedence (generic; the same lattice applies to model/effort in Step 0.6):** an inline override in `task.md` beats the project context, which beats the base/agent default — `task.md > PCTX > base`. The injected header states this so the override is visible to the agent, not silent.
 
-This is the only project-specific seam in the pipeline: one conditional read plus one append. Agent prompt files in `agents/` are never modified for project specifics.
+This is the only project-specific seam in the pipeline: conditional reads plus one append. Agent prompt files in `agents/` are never modified for project specifics.
 
 ### Step 1 — Create branch (and worktree if enabled)
 
@@ -226,6 +236,7 @@ git worktree add $WORK_ROOT -b $BRANCH
 mkdir -p $WORK_ROOT/maw/tasks/in_progress
 cp -r maw/tasks/in_progress/$TASK_ID $WORK_ROOT/maw/tasks/in_progress/
 [ -d maw/project-context ] && cp -r maw/project-context $WORK_ROOT/maw/
+[ -f maw/ROADMAP.md ] && cp maw/ROADMAP.md $WORK_ROOT/maw/
 ```
 
 **If git-tracked mode** (`maw/` NOT in `.gitignore`): nothing to copy — both are already in the checkout.
@@ -408,13 +419,30 @@ The framing comes with an implicit constraint: **change only what you can verify
 
 ---
 
+## Context propagation to subagents
+
+**Invariant (verified against Claude Code docs + GitHub Issue #27661, Feb 2026):** a Task-spawned subagent does **not** inherit the parent session. It does not auto-load project `CLAUDE.md`, global `~/.claude/CLAUDE.md`, `@`-imported files, hooks, or permission rules. It starts in a fresh context window with only its own agent-template system prompt plus **the spawn prompt string you pass it**. Whatever you do not put in that string, the subagent cannot see — there is no transitive reach through `@`-imports in the project's `CLAUDE.md`.
+
+This is why the Step 0.7 overlay exists at all, and why it must be inlined rather than referenced. It also imposes discipline whenever the project overlay *points* at a doc/lesson/notebook instead of pasting it:
+
+1. **Make normative docs reachable explicitly.** Do not write "follow project conventions" — the agent has no auto-loaded conventions. Either inline the relevant rules, or give an explicit instruction to `Read <path> fully before acting`. For tight-budget review stages (plan reviewers, code reviewer, fixer, QA), inline-quote the 3–10 most relevant rules instead of "Read fully".
+2. **Inline relevant lessons surgically.** If the overlay points at a lessons file / project notebook and a specific entry applies to *this task's risk area*, inline those 1–3 sentences under a "Lessons from prior work" heading in the spawn prompt. Never paste the whole notebook — that drowns signal and burns budget. Relevance is your judgement as orchestrator (you have the full picture); this is curation, not enforcement.
+3. **Quote concrete `file:line` references** instead of "look at the existing patterns".
+
+**Anti-patterns:** "follow CLAUDE.md" (not auto-loaded); "you know the codebase" (fresh context); trusting `@`-imports to reach the subagent (they don't); dumping an entire notebook into every spawn (overload).
+
+**Future-mode alternatives (not used by default, noted for consumers).** Per-subagent `memory:` frontmatter (Claude Code v2.1.33+) gives a named subagent its own persistent MEMORY.md — a per-stage silo, not shared. Fork mode (`CLAUDE_CODE_FORK_SUBAGENT=1`, experimental) makes a subagent inherit the full parent conversation including `CLAUDE.md` — at the cost of context isolation. MAW stays on the inline-context-in-spawn-prompt pattern until one of these matures or Issue #27661 ships native propagation. Project-specific paths and excerpts always live in the `PCTX` overlay, never in this base file.
+
+---
+
 ## Rules for the orchestrator
 
 - Never implement anything yourself. You only spawn agents and move files/folders.
 - Each agent is a fresh Task call with no conversation history — all context must be in the spawn prompt.
 - Every Task spawn passes a `model` parameter and (if not `medium`) an effort directive, both resolved via the Step 0.6 precedence (task.md beats settings.json). Never spawn without resolving them.
 - After every Task spawn returns, append a row to `metrics.md` from the result's `<usage>` trailer (see the Metrics ledger section). No spawn is exempt — clarifier, reviewers, QA, retries, re-spawns all get a row.
-- Before every Task spawn, apply the Step 0.7 project-context overlay (no-op if `PCTX/README.md` is absent). Never edit files in `agents/` for project specifics — the overlay is the only seam. Never let a pipeline agent write into `PCTX/`; agents only append proposals to the task-local `PCTX_PROPOSALS.md`.
+- Before every Task spawn, apply the Step 0.7 project-context overlay (no-op if `PCTX/README.md` and `PCTX/agents/<stem>.md` are both absent). Never edit files in `agents/` for project specifics — the overlay is the only seam. Never let a pipeline agent write into `PCTX/`; agents only append proposals to the task-local `PCTX_PROPOSALS.md`.
+- `maw/ROADMAP.md` (if present) is a derived view of the task.md `## Dependencies` sections — never authoritative. On any disagreement, task.md wins and the graph is regenerated, never the reverse. It is optional; absence is not an error.
 - If a Task call fails or produces no output file, retry once with an explicit instruction to write the output file before finishing.
 - Never merge to main without user confirmation.
 - If any agent produces a FAIL verdict: pause, report to user, wait for instructions before continuing.

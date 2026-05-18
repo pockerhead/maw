@@ -148,7 +148,13 @@ The base pipeline is 100% generic — it contains no knowledge of your project. 
 
 If that file exists, the orchestrator appends it verbatim to the end of every agent spawn prompt, marked NORMATIVE — it overrides generic guidance on conflict. Precedence: `task.md inline override > project context > base default`. If it does not exist, the pipeline behaves byte-for-byte as it would with no overlay — this is the default and requires nothing.
 
-It is one prose file, kept short by discipline (it rides into every agent on every stage). No manifest, no per-stage files, no templating. Agents never edit it: when an agent hits a contradiction or a durable lesson it appends a dated entry to that task's `PCTX_PROPOSALS.md`, and folding proposals into the real overlay is a deliberate, human-gated step via `/maw-context --review`. The only base change this required is one conditional step in the orchestrator plus the `maw-context` skill — the eight agent prompts are untouched.
+It is one prose file, kept short by discipline (it rides into every agent on every stage). Optionally, `maw/project-context/agents/<stem>.md` adds context for one specific agent (`planner`, `code-reviewer`, …) when only that stage needs it. The overlay may also *point* at canonical project docs / lessons / notebooks instead of pasting them — the orchestrator then inlines only the few lines this task's risk area needs, because a subagent sees nothing the spawn prompt does not contain (it does not inherit `CLAUDE.md`, `@`-imports, or notebooks — a verified Claude Code invariant the pipeline is built around).
+
+No manifest, no templating, no include engine. Agents never edit the overlay: when an agent hits a contradiction or a durable lesson it appends a dated entry to that task's `PCTX_PROPOSALS.md`, and folding proposals into the real overlay is a deliberate, human-gated step via `/maw-context --review`. The only base change this required is the orchestrator plus the `maw-context` skill — the eight agent prompts are untouched.
+
+## Roadmap graph
+
+`maw/ROADMAP.md` is an auto-maintained dependency view of the pending task board, derived from the `## Dependencies` section of each `task.md` (`task.md` is the source of truth — the graph is never authoritative). `/maw-tasks` regenerates it on every task create/edit; `/maw-execute-task` reconciles it against the task files before starting and drops the started task out of the pending graph. It is a short tree of hard blockers plus a list of soft orderings and unblocks — structure only, no narrative. Optional: absence is not an error, and projects that never declare dependencies never get one.
 
 ## How it compares
 

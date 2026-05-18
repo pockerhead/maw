@@ -124,15 +124,42 @@ Show the formatted task to the user. Ask for confirmation.
 
 On confirmation:
 1. Create `maw/tasks/pending/TASK-{NNN}/task.md` with the content.
-2. Check whether `maw/` is listed in the project's `.gitignore`.
+2. Regenerate `maw/ROADMAP.md` (see Step 5).
+3. Check whether `maw/` is listed in the project's `.gitignore`.
 
 **If `maw/` is NOT in `.gitignore`** (git-tracked mode):
-- Commit with message: `task: add TASK-{NNN} — {short title}`
+- Commit `maw/tasks/` **and** `maw/ROADMAP.md` together with message: `task: add TASK-{NNN} — {short title}`
 - The commit is required so that the task is available when a worktree is created later.
 
 **If `maw/` IS in `.gitignore`** (local-only mode):
 - Do NOT commit. The task files stay local and are not tracked by git.
 - Worktree-based workflows won't see these files — the user manages tasks locally.
+
+### Step 5 — Regenerate the roadmap graph
+
+After creating or editing any task, regenerate `maw/ROADMAP.md`. It is a **derived** view of the `## Dependencies` sections across `maw/tasks/pending/` — `task.md` is the source of truth, the graph is never authoritative. Regenerate the whole thing from the task files rather than hand-patching it (regeneration cannot drift; incremental edits can).
+
+Scope and format, deliberately minimal:
+
+- **Only `pending/` tasks.** Tasks in `in_progress/` / `done/` / `blocked/` are not in the graph. If a pending task is blocked by a non-pending one, note it inline as `[waits on TASK-XXX (in_progress)]`.
+- A short tree of **hard blockers** (`blocked by`): parent above, blocked children indented under it with `└──` / `├──`.
+- **Soft orderings** (`prefer after`) and **`unblocks`** as a compact bullet list under the tree, one line each.
+- No project narrative, no status history, no per-task essays — just the dependency structure. Keep it scannable. If it is growing into prose, you are over-filling it.
+
+Skeleton:
+
+```markdown
+# Roadmap graph (derived from task.md Dependencies — task.md is source of truth)
+
+TASK-002
+  └── TASK-005   (blocked by TASK-002)
+
+Soft / unblocks:
+- TASK-007 prefer after TASK-004 — reason
+- TASK-002 unblocks TASK-009 — what it enables
+```
+
+If there are zero dependency relations across all pending tasks, write a one-line `# Roadmap graph` with "No inter-task dependencies." rather than an empty file.
 
 ### Step 0 (first run) — Ask about git tracking
 
@@ -153,7 +180,7 @@ This question is asked only once — on subsequent runs, just check `.gitignore`
 If the user provides multiple tasks at once ("I need to do X, Y, and Z"), process them sequentially:
 1. Show all proposed tasks formatted together.
 2. Ask for a single confirmation for the batch.
-3. Create all task folders. If git-tracked mode — commit in a single commit.
+3. Create all task folders, then regenerate `maw/ROADMAP.md` once (Step 5). If git-tracked mode — commit the folders and `ROADMAP.md` in a single commit.
 
 For batch tasks, infer priority from ordering (first = highest priority) unless the user specifies otherwise.
 
@@ -180,10 +207,13 @@ maw/tasks/
 └── blocked/
 ```
 
+`maw/ROADMAP.md` sits next to `maw/tasks/` (a sibling, not inside `tasks/`). It is the derived dependency view, regenerated on every task create/edit (Step 5).
+
 ---
 
 ## Rules
 
+- `maw/ROADMAP.md` is derived from task.md `## Dependencies` — task.md is the source of truth, never edit a task to match the graph. Regenerate the whole graph, do not hand-patch.
 - Never suggest implementation details — only capture what needs to be done.
 - Never modify existing tasks — only append new ones.
 - Keep the tone efficient. This is intake, not planning.

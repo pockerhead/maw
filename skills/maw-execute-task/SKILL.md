@@ -84,7 +84,7 @@ If no pending tasks exist, report that to the user and stop.
 
 **Read the `Mode:` field** from the task's `task.md`. Store as `MODE`. If missing, default to `full`. Valid values: `full`, `small-fix`, `brainstorm`, `deep-research`. Any other value -> stop and report to the user.
 
-Also read the `Type:` field — useful for agent context but does not affect pipeline shape.
+Also read the `Type:` field — useful for agent context but does not affect pipeline shape. Read the optional `Domains:` line if present (comma-separated domain names) and store it as `DOMAINS` — Step 0.7 uses it to pre-inject project-context domain modules. Missing line → no pre-injected domains (the Step 0.7 catalog still covers self-load).
 
 **Roadmap reconcile (before any work).** If `maw/ROADMAP.md` exists, open it and check it against the actual `## Dependencies` sections of the task.md files in `maw/tasks/pending/`. `task.md` is the source of truth; `ROADMAP.md` is a derived view. If they disagree, regenerate the affected part of `ROADMAP.md` from task.md before continuing — never edit a task.md to match the graph. Then drop the task you just moved to `in_progress/` out of the pending graph. In git-tracked mode, fold this into the existing `task: start $TASK_ID` commit (`git add maw/`). If `maw/ROADMAP.md` does not exist, skip — it is optional and maintained by `/maw-tasks`.
 
@@ -178,40 +178,49 @@ This is the only thing that varies per agent — pipeline shape and the rest of 
 
 ### Step 0.7 — Project context overlay (generic; no-op when absent)
 
-Define `PCTX = {WORK_ROOT}/maw/project-context`. This is an optional, project-supplied overlay authored and maintained by the `/maw-context` skill. The base pipeline knows only the contract below — it never contains any project's actual content.
+Define `PCTX = {WORK_ROOT}/maw/project-context`. Optional, project-supplied, authored by the `/maw-context` skill. The base pipeline knows only the contract below — it never contains project content. Three tiers:
 
-**At every agent spawn below** — every stage, every retry, every re-spawn — after the spawn prompt is built (with model/effort already resolved) and before calling the Task tool, assemble the project-context block from two optional sources:
+- **`PCTX/README.md` — constant**, into every agent every stage.
+- **`PCTX/domains/<name>.md` — domain-gated**, normative, into every running stage when the task is in that domain.
+- **`PCTX/agents/<stem>.md` — stage-gated**, into that one agent only.
 
-1. **Shared (all agents):** `PCTX/README.md` — applies to every agent.
-2. **Per-agent (this agent only):** `PCTX/agents/<stem>.md`, where `<stem>` is the agent file stem being spawned (`clarifier`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`) — same stems as the model/effort overrides. Use it only when a stage genuinely needs context the others do not.
+If `PCTX/` does not exist → spawn every prompt unchanged; the base is byte-for-byte unaffected. This is the default for any generic project. Otherwise, **at every agent spawn** — every stage, every retry, every re-spawn — after the prompt is built (model/effort resolved) and before calling Task, append this block to the **end** of the spawn prompt, including only the parts that exist:
 
-- If **neither** file exists → spawn the prompt unchanged. The pipeline behaves exactly as with no overlay; the base is byte-for-byte unaffected. This is the default for any generic project.
-- If **either** exists → append this block verbatim to the **end** of the spawn prompt (include only the parts that exist; per-agent goes after shared so it can refine it):
+```
+<!-- PROJECT_CONTEXT -->
+## Project context (NORMATIVE — a constraint you must satisfy)
+This overrides the generic guidance above on any conflict. It is project law,
+human-curated. Do not audit whether the law is correct — verify your work
+SATISFIES it. (Disagreement goes to PCTX_PROPOSALS.md, below, never silent.)
 
-  ```
-  <!-- PROJECT_CONTEXT -->
-  ## Project context (NORMATIVE — overrides the generic guidance above on any conflict)
+{PCTX/README.md — with the {PCTX} placeholder replaced by the real path}
 
-  {contents of PCTX/README.md, verbatim — omit this line and heading if absent}
+{For each active domain: contents of PCTX/domains/<name>.md, under a
+"### Domain: <name>" heading — omit if no domain is active}
 
-  ### For this stage (<stem>)
-  {contents of PCTX/agents/<stem>.md, verbatim — omit this subsection if absent}
+### For this stage (<stem>)
+{PCTX/agents/<stem>.md — omit this subsection if that file is absent}
 
-  ---
-  If something in your step contradicts the project context above, or you hit a
-  durable rule or lesson worth recording, DO NOT edit the project context.
-  Append a dated entry to {TASK_DIR}/PCTX_PROPOSALS.md (create it if absent)
-  stating what and why. Folding proposals into the real project context is a
-  separate curated step — not yours.
-  ```
+---
+If something in your step contradicts the project context above, or you hit a
+durable rule or lesson worth recording, DO NOT edit the project context.
+Append a dated entry to {TASK_DIR}/PCTX_PROPOSALS.md (create it if absent)
+stating what and why. Folding proposals into the real project context is a
+separate curated step — not yours.
+```
 
-  Substitute `{TASK_DIR}` and `<stem>` to real values. Everything is inlined as-is — no include resolution, no token-budget engine. The project author keeps these files tight because the shared one rides into every agent on every stage; that discipline is the `maw-context` skill's job, not the orchestrator's.
+Substitute `{TASK_DIR}`, `<stem>`, and every `{PCTX}` to real values. Because the catalog inside `README.md` contains `{PCTX}/domains/...` paths an agent may self-Read, the orchestrator **must** substitute `{PCTX}` when injecting README — it is near-verbatim, not pure-verbatim. (`{PCTX}` resolves to the worktree-correct path in both persistence modes; the whole `PCTX/` dir is copied into the worktree in local-only mode, Step 1.)
 
-**Pointers, not dumps.** The overlay may *point* at canonical project docs / lessons / notebooks instead of pasting them (e.g. "See `docs/architecture.md`. Key rules: …"). When it does, the orchestrator follows the **Context propagation to subagents** discipline below: a subagent sees nothing the spawn prompt does not contain, so for a pointer the orchestrator must either inline the few relevant lines or instruct the agent to `Read` the path explicitly. The overlay declares the pointers; the orchestrator surgically inlines what the current task's risk area actually needs — never the whole referenced file.
+**Which domains are active.** A domain module is injected when either holds:
 
-**Precedence (generic; the same lattice applies to model/effort in Step 0.6):** an inline override in `task.md` beats the project context, which beats the base/agent default — `task.md > PCTX > base`. The injected header states this so the override is visible to the agent, not silent.
+1. **Pre-injected** — `task.md` has a `Domains:` line (written by `/maw-tasks`, confirmed by the user — see that skill). Each listed `<name>` whose `PCTX/domains/<name>.md` exists is active for this whole run. This is the reliable path: a recorded human decision, not an execute-time guess.
+2. **Self-loaded** — the `## Domain catalog` in `README.md` (always injected, since README is constant) lists `trigger → {PCTX}/domains/<name>.md` with observable triggers and a HARD RULE telling the agent to Read the mapped module before working any part that matches a trigger. This is the recall safety net for a task that wanders into a domain `task.md` did not declare. The agent self-loads; you do not predict it.
 
-This is the only project-specific seam in the pipeline: conditional reads plus one append. Agent prompt files in `agents/` are never modified for project specifics.
+You are not asked to guess domains from prose. Pre-inject only what `task.md Domains:` declares; the catalog covers the rest.
+
+**Precedence (generic; same lattice as model/effort in Step 0.6):** `task.md` inline override > project context > base/agent default. The injected header states this so it is visible, not silent.
+
+This is the only project-specific seam: conditional reads plus one append plus `{PCTX}` substitution. Files in `agents/` are never modified for project specifics.
 
 ### Step 1 — Create branch (and worktree if enabled)
 
@@ -443,7 +452,7 @@ This is why the Step 0.7 overlay exists at all, and why it must be inlined rathe
 - Each agent is a fresh Task call with no conversation history — all context must be in the spawn prompt.
 - Every Task spawn passes a `model` parameter and (if not `medium`) an effort directive, both resolved via the Step 0.6 precedence (task.md beats settings.json). Never spawn without resolving them.
 - After every Task spawn returns, append a row to `metrics.md` from the result's `<usage>` trailer (see the Metrics ledger section). No spawn is exempt — clarifier, reviewers, QA, retries, re-spawns all get a row.
-- Before every Task spawn, apply the Step 0.7 project-context overlay (no-op if `PCTX/README.md` and `PCTX/agents/<stem>.md` are both absent). Never edit files in `agents/` for project specifics — the overlay is the only seam. Never let a pipeline agent write into `PCTX/`; agents only append proposals to the task-local `PCTX_PROPOSALS.md`.
+- Before every Task spawn, apply the Step 0.7 project-context overlay (no-op if `PCTX/` is absent), substituting `{PCTX}` to the real path. Pre-inject domain modules per `task.md Domains:`; never guess domains from prose — the constant catalog is the self-load net. Never edit files in `agents/` for project specifics — the overlay is the only seam. Never let a pipeline agent write into `PCTX/`; agents only append proposals to the task-local `PCTX_PROPOSALS.md`.
 - `maw/ROADMAP.md` (if present) is a derived view of the task.md `## Dependencies` sections — never authoritative. On any disagreement, task.md wins and the graph is regenerated, never the reverse. It is optional; absence is not an error.
 - If a Task call fails or produces no output file, retry once with an explicit instruction to write the output file before finishing.
 - Never merge to main without user confirmation.

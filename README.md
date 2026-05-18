@@ -139,18 +139,22 @@ Plus `PCTX_PROPOSALS.md` in any task where an agent proposed a project-context c
 
 ## Project context overlay
 
-The base pipeline is 100% generic — it contains no knowledge of your project. Project-specific invariants, tooling, lessons, and custom skills live in **one file**: `maw/project-context/README.md`, authored with `/maw-context`.
+The base pipeline is 100% generic — it contains no knowledge of your project. Project-specific knowledge lives in `maw/project-context/`, authored with `/maw-context`.
 
 ```
-/maw-context            # scaffold the overlay, or add an invariant/lesson/tool
+/maw-context            # scaffold, or add an invariant / domain / lesson / tool
 /maw-context --review   # fold pending agent proposals into the overlay
 ```
 
-If that file exists, the orchestrator appends it verbatim to the end of every agent spawn prompt, marked NORMATIVE — it overrides generic guidance on conflict. Precedence: `task.md inline override > project context > base default`. If it does not exist, the pipeline behaves byte-for-byte as it would with no overlay — this is the default and requires nothing.
+If `maw/project-context/` does not exist, the pipeline behaves byte-for-byte as with no overlay — this is the default and requires nothing. If it exists, three tiers are injected, each gated on a different axis:
 
-It is one prose file, kept short by discipline (it rides into every agent on every stage). Optionally, `maw/project-context/agents/<stem>.md` adds context for one specific agent (`planner`, `code-reviewer`, …) when only that stage needs it. The overlay may also *point* at canonical project docs / lessons / notebooks instead of pasting them — the orchestrator then inlines only the few lines this task's risk area needs, because a subagent sees nothing the spawn prompt does not contain (it does not inherit `CLAUDE.md`, `@`-imports, or notebooks — a verified Claude Code invariant the pipeline is built around).
+- `README.md` — **constant**, into every agent every stage. Only what is true regardless of subsystem or stage: a short orientation, universal invariants, and a **domain catalog** (observable `trigger → domains/<name>.md` lines plus a hard rule to self-load a module on a matching trigger). Bounded by domain count, not free — kept disciplined.
+- `domains/<name>.md` — **domain-gated**, normative. Injected into every running stage (planner and reviewers included — planning correctness needs it) when the task is in that domain. It gets there two ways: pre-injected because `task.md` declared `Domains:` (a recorded decision `/maw-tasks` proposes and the user confirms), or self-loaded when an agent hits an observable catalog trigger a task did not predict (the recall safety net). Subsystem invariants, risk lessons, and pointers to bulky docs live here.
+- `agents/<stem>.md` — **stage-gated**, into one agent only. Build/test/runtime-QA tooling and stage skills — clarifier and planners do not carry tooling they never use.
 
-No manifest, no templating, no include engine. Agents never edit the overlay: when an agent hits a contradiction or a durable lesson it appends a dated entry to that task's `PCTX_PROPOSALS.md`, and folding proposals into the real overlay is a deliberate, human-gated step via `/maw-context --review`. The only base change this required is the orchestrator plus the `maw-context` skill — the eight agent prompts are untouched.
+A subagent inherits nothing — not `CLAUDE.md`, not `@`-imports, not notebooks (a verified Claude Code invariant the pipeline is built around), so everything needed must be injected or self-`Read`. Project context is normative as **law to satisfy, not a claim to audit** — review agents verify the code satisfies it; whether the law itself is right is human-gated via `/maw-context --review`. Agents never edit the overlay: they append dated entries to that task's `PCTX_PROPOSALS.md`, folded in deliberately.
+
+This is reduced, human-authored machinery — a hand-written catalog and human-declared `Domains:`, no resolution engine, no token-budget gate, no includes. The base change is the orchestrator plus the `maw-context`/`maw-tasks` skills; the eight agent prompts are untouched.
 
 ## Roadmap graph
 

@@ -109,6 +109,20 @@ Correct? Anything to add or remove?
 
 Record the confirmed list as the `## Dependencies` section in Step 3.
 
+### Step 2.8 — Propose project-context domains (optional)
+
+Skip this step entirely if `maw/project-context/domains/` does not exist — a generic project without a `/maw-context` overlay has no domains, write no `Domains:` line.
+
+If it does exist: list the available modules (`maw/project-context/domains/*.md`) and read the `## Domain catalog` in `maw/project-context/README.md`. Match the task against the catalog triggers. For each domain this task plausibly touches, propose it. This recorded decision is what the pipeline pre-injects into the planner and reviewers — it is more reliable than the orchestrator guessing from prose at execute time, and you have the user here to confirm.
+
+```
+This task looks like it touches: godot-bridge, persistence
+(matched catalog triggers: files under crates/*_godot/**, any DB migration)
+Pre-load these domain modules for the pipeline? [yes] [edit] [no]
+```
+
+Be conservative — only domains with a clear trigger match. The catalog is still the runtime safety net for anything you miss (an agent self-loads on an observable trigger), so under-proposing degrades to "self-loaded later", not "lost". Over-proposing wastes tokens on every stage. If the user confirms (or edits), record it as the `Domains:` line in Step 3; if none match or the user declines, write no line.
+
 ### Step 3 — Write the task
 
 Create the file `maw/tasks/pending/TASK-{NNN}/task.md` with this format:
@@ -122,6 +136,7 @@ Priority: {high|medium|low}
 Branch: {type}/{kebab-case-title}
 {Models: default=opus, code-reviewer=opus}   <- optional, only if reinforced in Step 2.6
 {Effort: code-reviewer=high, qa=high}        <- optional, only if reinforced in Step 2.6
+{Domains: godot-bridge, persistence}         <- optional, only if matched in Step 2.8
 
 ## Description
 {Clear description of what needs to be done. Include context the user provided.
@@ -150,6 +165,7 @@ Reference specific files/endpoints/components if mentioned.}
 - Dependencies: write only the relations confirmed in Step 2.7. Fill only the lines that apply. If Step 2.7 concluded zero `blocked by` AND zero `prefer after` AND zero `unblocks`, **omit the whole `## Dependencies` section** — do not leave empty bullets or placeholders. `maw/ROADMAP.md` is derived from this section (Step 5).
 - No `Status` field inside the file — the parent directory (`pending/`, `in_progress/`, etc.) is the status.
 - `Models:` / `Effort:` lines: optional, written only if Step 2.6 reinforcement was accepted. Syntax: comma-separated tokens, each `default=<v>` (task-wide) or `<agent-name>=<v>` (one agent). Models: `sonnet|opus|haiku`. Effort: `low|medium|high`. Agent names are the 8 stems (`clarifier`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`). These beat `maw/settings.json` for this task only. Omit the lines entirely when not reinforced.
+- `Domains:` line: optional, written only if Step 2.8 matched (and only if `maw/project-context/domains/` exists). Comma-separated domain names matching `maw/project-context/domains/<name>.md`. The pipeline pre-injects these modules into planner and reviewers. Omit the line entirely when none match or there is no overlay.
 
 ### Step 4 — Confirm and save
 

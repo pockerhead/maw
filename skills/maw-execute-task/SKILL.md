@@ -198,15 +198,15 @@ SATISFIES it. (Disagreement goes to PCTX_PROPOSALS.md, below, never silent.)
 {For each active domain: contents of PCTX/domains/<name>.md, under a
 "### Domain: <name>" heading — omit if no domain is active}
 
-### For this stage (<stem>)
+### For this agent (<stem>)
 {PCTX/agents/<stem>.md — omit this subsection if that file is absent}
 
 ---
-If something in your step contradicts the project context above, or you hit a
+If something in your work contradicts the project context above, or you hit a
 durable rule or lesson worth recording, DO NOT edit the project context.
 Append a dated entry to {TASK_DIR}/PCTX_PROPOSALS.md (create it if absent)
 stating what and why. Folding proposals into the real project context is a
-separate curated step — not yours.
+separate curated process — not yours.
 ```
 
 Substitute `{TASK_DIR}`, `<stem>`, and every `{PCTX}` to real values. Because the catalog inside `README.md` contains `{PCTX}/domains/...` paths an agent may self-Read, the orchestrator **must** substitute `{PCTX}` when injecting README — it is near-verbatim, not pure-verbatim. (`{PCTX}` resolves to the worktree-correct path in both persistence modes; the whole `PCTX/` dir is copied into the worktree in local-only mode, Step 1.)
@@ -297,7 +297,7 @@ If skipped, write `{WORK_ROOT}/{TASK_DIR}/TASK_FINAL.md` with the original task 
 
 Why this exists: every later stage verifies the *solution within the premise* and inherits the premise's lineage (task.md → TASK_FINAL → plan → reviews). Nothing else attacks the premise itself. This is the one isolated check that does, and the only thing that historically catches a wrong premise is a concrete counter-example from outside the lineage.
 
-Read `agents/premise-challenge.md`. Substitute variables. **Pass it only** the premise source (`TASK_FINAL.md` if it exists, else `task.md`) and the working/repo paths — **never** your own root-cause writeup, a summary, the plan, or any reviewer note. The agent investigates primary sources (code at `file:line`, an executable result it runs, the raw failing artifact) itself; isolation from the lineage is the whole point. Spawn the agent. Do **not** apply the "previous agent was on a weaker model" framing here — this agent has its own evidence-bound framing; that adversarial framing is for solution reviewers only.
+Read `agents/premise-challenge.md`. Substitute variables. **Pass it only** the premise source (`TASK_FINAL.md` if it exists, else `task.md`) and the working/repo paths — **never** your own root-cause writeup, a summary, the plan, or any reviewer note. The agent investigates primary sources (code at `file:line`, an executable result it runs, the raw failing artifact) itself; isolation from the lineage is the whole point. Spawn the agent. Do **not** apply the "weaker agent" adversarial framing here — this agent has its own evidence-bound framing; the adversarial framing is for solution reviewers only.
 
 **After agent finishes:** read `{WORK_ROOT}/{TASK_DIR}/PREMISE_CHALLENGE.md`.
 
@@ -439,11 +439,11 @@ Append one row: incrementing `#`, the step number, the agent name (suffix `(retr
 
 ## Adversarial framing
 
-Every review agent (Plan Rev 1, Plan Rev 2, Code Rev, Fixer, QA) receives the framing: **"the previous agent was on a weaker model"**. This is intentional. It triggers skepticism and forces the agent to verify claims against actual code rather than trusting what was written. The orchestrator (you) always uses this framing when spawning review agents — even if in reality all agents run on the same model.
+Every review agent (Plan Rev 1, Plan Rev 2, Code Rev, Fixer, QA) receives role-based adversarial framing: the artifact under review was **"written by a weaker agent"** (or "weaker model" — equivalent). This is intentional. It triggers skepticism and forces the agent to verify claims against actual code rather than trusting what was written. The orchestrator (you) always applies this framing when spawning review agents — even if in reality all agents run on the same model. **Important:** the framing is role-based ("the artifact's author was weaker"), never sequence-based ("the previous stage / the previous agent"). Sequence wording teaches the spawned agent that it sits inside a pipeline and tempts it to drive that pipeline. Keep framing about the artifact's author, not about position.
 
-The framing comes with an implicit constraint: **change only what you can verify is wrong**. Rewriting correct code "to be safe" introduces new bugs. If uncertain — document the concern in the review artifact and let the next agent decide.
+The framing comes with an implicit constraint: **change only what you can verify is wrong**. Rewriting correct code "to be safe" introduces new bugs. If uncertain — document the concern in the review artifact; a human reviews the artifact after the run.
 
-This framing reduces, but cannot eliminate, a deeper defect: every solution reviewer verifies the solution *within the premise the orchestrator framed* and inherits that premise's lineage; same-lineage reviewers raise false-consensus confidence, not accuracy, and a model cannot repair a wrong premise from inside the context that contains it (arXiv 2506.01332, 2310.01798; the fix is independent evidence, not a fiercer arguer — arXiv 2506.13609). Step 2.5's premise-challenge is the structural mitigation: an isolated agent fed only the task and the real system, never the lineage. It does **not** receive the "previous agent was weaker" framing — that points at prior *work*, not at the *frame*. The defect is reduced, not removed; the human remains the last line on the residue.
+This framing reduces, but cannot eliminate, a deeper defect: every solution reviewer verifies the solution *within the premise the orchestrator framed* and inherits that premise's lineage; same-lineage reviewers raise false-consensus confidence, not accuracy, and a model cannot repair a wrong premise from inside the context that contains it (arXiv 2506.01332, 2310.01798; the fix is independent evidence, not a fiercer arguer — arXiv 2506.13609). Step 2.5's premise-challenge is the structural mitigation: an isolated agent fed only the task and the real system, never the lineage. It does **not** receive the "weaker agent" adversarial framing — that points at prior *work*, not at the *frame*. The defect is reduced, not removed; the human remains the last line on the residue.
 
 ---
 

@@ -31,11 +31,10 @@ MANDATORY pre-flight — verify plan presuppositions before any edit:
 Before you write a single line of code, walk through PLAN_FINAL.md and
 for each Step that names a file, function, struct, import path, or API,
 run BOTH checks below. This is a SHALLOW pair of checks, not a full
-plan review — you are not redoing the reviewers' work. The plan went
-through two reviews, but reviewers can still miss a wrong-name or
-wrong-path claim, and you are the first agent who will TOUCH the code.
-Catching a broken presupposition now costs minutes; materializing it
-into wrong code costs a full pipeline retry.
+plan review. The plan was written by a weaker agent and may still
+contain a wrong-name or wrong-path claim. Catching a broken
+presupposition now costs minutes; building code on top of it produces
+wasted work.
 
 For each named entity in PLAN_FINAL.md verify BOTH (an entity is OK
 only if both pass — the second check is the load-bearing one, do not
@@ -63,8 +62,8 @@ single section:
 > - <plan claim> vs <actual code at file:line> — what the plan said, what is really there
 > - (one bullet per mismatch)
 
-Then stop and exit. The orchestrator routes PLAN_BLOCKED back to a
-human; do not attempt fixes or partial implementation.
+Then stop and exit. A human will see PLAN_BLOCKED and decide what to
+do; do not attempt fixes or partial implementation.
 
 If pre-flight passes (every presupposition you checked is real),
 proceed to Instructions below.

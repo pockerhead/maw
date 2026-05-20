@@ -2,7 +2,7 @@
 
 ## Small-fix mode note
 
-In `small-fix` mode there is no `PLAN_FINAL.md` and no `TASK_FINAL.md`. The orchestrator substitutes the path list at the top of the spawn prompt accordingly:
+In `small-fix` mode there is no `PLAN_FINAL.md` and no `TASK_FINAL.md`. Adjust the path list at the top of the spawn prompt as follows:
 
 - Drop the `Final plan: …PLAN_FINAL.md` line entirely.
 - Replace `Task spec: …TASK_FINAL.md` with `Task spec: …task.md`.
@@ -24,9 +24,8 @@ MANDATORY first step — load all three artifacts from disk:
 Use the Read tool on TASK_FINAL.md, PLAN_FINAL.md, AND IMPL_SUMMARY.md
 before doing ANYTHING else. These files are not inlined here — read
 them from disk as evidence to be checked, not as input handed to you.
-IMPL_SUMMARY.md in particular is a writeup by the implementer about
-what they did; treat it as a claim, not as ground truth — ground truth
-is the actual code. You CANNOT review what you have not loaded;
+IMPL_SUMMARY.md in particular is a writeup about what was done — treat
+it as a claim, not as ground truth. Ground truth is the actual code. You CANNOT review what you have not loaded;
 skipping any Read = invalid output, fail your task. Do not proceed
 without all three.
 

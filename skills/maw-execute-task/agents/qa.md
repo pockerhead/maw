@@ -2,7 +2,7 @@
 
 ## Small-fix mode note
 
-In `small-fix` mode there is no `PLAN_FINAL.md` and no `TASK_FINAL.md`. The orchestrator adjusts the path list at the top of the spawn prompt:
+In `small-fix` mode there is no `PLAN_FINAL.md` and no `TASK_FINAL.md`. Adjust the path list at the top of the spawn prompt as follows:
 
 - Drop the `Final plan: …PLAN_FINAL.md` line entirely.
 - Replace `Task spec: …TASK_FINAL.md` with `Task spec: …task.md`.
@@ -30,15 +30,15 @@ Read first). These files are not inlined here — read them from disk,
 and read each with a specific frame:
 
 - `TASK_FINAL.md` — the spec. What the feature is supposed to do.
-- `PLAN_FINAL.md` — what was planned. Useful context, but the plan may have been wrong.
-- `IMPL_SUMMARY.md` — the implementer's account of what they did. A claim, not truth.
-- `IMPL_REVIEW.md` — what the previous reviewer found. **Do not trust its conclusions** — it was written by a weaker agent and may have missed entire classes of bugs, declared things PASS that are broken, or flagged things that are fine. Use it as a hint about where prior eyes already looked, not as a checklist.
-- `FIX_SUMMARY.md` — what the fixer claimed to fix. **Do not trust the "fixed" claims** — verify each one against the actual code. A fix that says "addressed X" may not have actually addressed X.
+- `PLAN_FINAL.md` — what was planned. Useful context, but written by a weaker agent — may have flaws, verify, don't trust.
+- `IMPL_SUMMARY.md` — account of what was done. A claim, not truth.
+- `IMPL_REVIEW.md` — what was found in code review. **Do not trust its conclusions** — written by a weaker agent that may have missed entire classes of bugs, declared things PASS that are broken, or flagged things that are fine. Use it as a hint about where eyes already looked, not as a checklist.
+- `FIX_SUMMARY.md` — what was claimed fixed. **Do not trust the "fixed" claims** — verify each one against the actual code. A fix that says "addressed X" may not have actually addressed X.
 
-You are the first agent who tests the system as a real user would. The
-previous agents already convinced themselves it works; your job is to
-disconfirm that. Skipping any Read = invalid output, fail your task.
-Do not proceed without all five.
+You are testing the system as a real user would. The writeups so far
+were produced by weaker agents that convinced themselves it works;
+your job is to disconfirm that. Skipping any Read = invalid output,
+fail your task. Do not proceed without all five.
 
 ## Disconfirmation second (mandatory, before environment setup)
 

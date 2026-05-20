@@ -320,19 +320,21 @@ Read `agents/planner.md`. Substitute variables and task contents. For `deep-rese
 
 **Mode gate:** skip if `MODE` is `small-fix`.
 
-Read `agents/plan-reviewer-1.md`. Substitute variables and contents of `TASK_FINAL.md` + `PLAN.md`. Spawn the agent.
+Read `agents/plan-reviewer-1.md`. Substitute variables only — `TASK_FINAL.md` and `PLAN.md` are read from disk by the agent itself (mandatory Read block in the prompt), not inlined here. Spawn the agent.
 
 ### Step 5 — Plan reviewer 2 (final plan)
 
 **Mode gate:** skip if `MODE` is `small-fix`.
 
-Read `agents/plan-reviewer-2.md`. Substitute variables and contents of `TASK_FINAL.md` + `PLAN_V2.md`. Spawn the agent.
+Read `agents/plan-reviewer-2.md`. Substitute variables only — `TASK_FINAL.md` and `PLAN_V2.md` are read from disk by the agent itself (mandatory Read block in the prompt), not inlined here. Spawn the agent.
 
 ### Step 6 — Implementer agent
 
 **Mode gate:** skip if `MODE` is `brainstorm` or `deep-research`. Jump to Step 10.
 
 Read `agents/implementer.md`. For `small-fix` mode, follow the small-fix fallback instructions in the agent file. Substitute variables and spawn.
+
+**After agent finishes:** read `{WORK_ROOT}/{TASK_DIR}/IMPL_SUMMARY.md`. If it contains `Verdict: PLAN_BLOCKED` — **treat exactly like a FAIL verdict**: pause, surface `IMPL_SUMMARY.md` to the user verbatim, wait for instructions. Do **not** spawn the code-reviewer. The plan, not the code, is what is in question — the user decides whether to amend `PLAN_FINAL.md`, restart planning, or override. This is the implementer's pre-flight escape hatch for catching a broken-presupposition plan before wrong code materializes.
 
 ### Step 7 — Code reviewer (read-only)
 
@@ -431,7 +433,7 @@ tool_uses: 16
 duration_ms: 91043</usage>
 ```
 
-Append one row: incrementing `#`, the step number, the agent name (suffix `(retry)` / `(re-spawn N)` if it is not the first spawn of that agent), the resolved model and effort, a short outcome (verdict like `PASS`/`NEEDS_WORK`/`SHIP`, or `ok` / `no-output`), then `tool_uses`, `total_tokens`, and `duration_ms` rendered as `Xm Ys`. One spawn = one row; nothing is overwritten. If a result has no `<usage>` trailer, write `n/a` in those three columns rather than guessing.
+Append one row: incrementing `#`, the step number, the agent name (suffix `(retry)` / `(re-spawn N)` if it is not the first spawn of that agent), the resolved model and effort, a short outcome (verdict like `PASS`/`NEEDS_WORK`/`SHIP`/`PREMISE HOLDS`/`PREMISE SUSPECT`/`PLAN_BLOCKED`, or `ok` / `no-output`), then `tool_uses`, `total_tokens`, and `duration_ms` rendered as `Xm Ys`. One spawn = one row; nothing is overwritten. If a result has no `<usage>` trailer, write `n/a` in those three columns rather than guessing.
 
 **At wrap-up (Step 10), before the final status move**, append a `**TOTAL**` row: sum of `Tokens`, sum of `Tool uses`, sum of `Duration`, and put the spawned-agent count in the Agent column (e.g. `10 spawns / 9 agents`). This row is the per-task total across all agents spawned within the task.
 
@@ -471,7 +473,7 @@ This is why the Step 0.7 overlay exists at all, and why it must be inlined rathe
 - `maw/ROADMAP.md` (if present) is a derived view of the task.md `## Dependencies` sections — never authoritative. On any disagreement, task.md wins and the graph is regenerated, never the reverse. It is optional; absence is not an error.
 - If a Task call fails or produces no output file, retry once with an explicit instruction to write the output file before finishing.
 - Never merge to main without user confirmation.
-- If any agent produces a FAIL verdict — or `premise-challenge` returns `PREMISE SUSPECT` — pause, report to user (surface the artifact verbatim), wait for instructions before continuing.
+- If any agent produces a FAIL verdict — or `premise-challenge` returns `PREMISE SUSPECT`, or `implementer` returns `PLAN_BLOCKED` — pause, report to user (surface the artifact verbatim), wait for instructions before continuing.
 - **Primary source over proxy (premise audit).** For any task that is a retry, a relaunch, or marked premise-suspect, hand `premise-challenge` the primary artifact (the raw failing test / log / repro / code), never your own writeup or a summary of it. A `PREMISE_CHALLENGE` verdict that cites only a derived artifact (a summary, a prior mandate, a log line used as a proxy for a fact) is invalid — it must cite a primary source: code at `file:line`, an executable result, or a direct observation of the real system. A repro or observation predicate is a deliverable to be produced, not a conclusion to be asserted. What counts as the primary source / repro harness for a given project is supplied by that project's `PCTX` overlay, not hardcoded here.
 - Status changes are folder moves (`mv maw/tasks/pending/X maw/tasks/in_progress/X`), not edits to a file.
 - In git-tracked mode (maw/ not in .gitignore): always commit status transitions so they propagate correctly through worktrees and merges.

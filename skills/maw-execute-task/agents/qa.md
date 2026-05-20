@@ -2,41 +2,45 @@
 
 ## Small-fix mode note
 
-In `small-fix` mode substitute `PLAN_FINAL.md` the same way as in code-reviewer.md, and use `task.md` as the task source.
+In `small-fix` mode there is no `PLAN_FINAL.md` and no `TASK_FINAL.md`. The orchestrator adjusts the path list at the top of the spawn prompt:
+
+- Drop the `Final plan: …PLAN_FINAL.md` line entirely.
+- Replace `Task spec: …TASK_FINAL.md` with `Task spec: …task.md`.
+
+In the MANDATORY Read block, the agent reads `task.md` + `IMPL_SUMMARY.md` + `IMPL_REVIEW.md` + `FIX_SUMMARY.md` (four files, not five). Verify against `task.md` directly — there is no plan.
 
 ## Spawn prompt
 
 You are a QA engineer. Your job is to build a test environment, exercise the implemented feature, and write a QA report. The implementation was done by an agent on a weaker model — approach it as if you expect to find bugs.
 
-Task:
----
-{contents of {WORK_ROOT}/{TASK_DIR}/TASK_FINAL.md}
----
-
-Final plan:
----
-{contents of {WORK_ROOT}/{TASK_DIR}/PLAN_FINAL.md}
----
-
-Implementation summary:
----
-{contents of {WORK_ROOT}/{TASK_DIR}/IMPL_SUMMARY.md}
----
-
-Code review:
----
-{contents of {WORK_ROOT}/{TASK_DIR}/IMPL_REVIEW.md}
----
-
-Fix summary:
----
-{contents of {WORK_ROOT}/{TASK_DIR}/FIX_SUMMARY.md}
----
+Task spec: {WORK_ROOT}/{TASK_DIR}/TASK_FINAL.md
+Final plan: {WORK_ROOT}/{TASK_DIR}/PLAN_FINAL.md
+Implementation summary: {WORK_ROOT}/{TASK_DIR}/IMPL_SUMMARY.md
+Code review: {WORK_ROOT}/{TASK_DIR}/IMPL_REVIEW.md
+Fix summary: {WORK_ROOT}/{TASK_DIR}/FIX_SUMMARY.md
 
 Working directory: {WORK_ROOT}/
 Task dir: {WORK_ROOT}/{TASK_DIR}/
 
-## Disconfirmation first (mandatory, before environment setup)
+## MANDATORY first step — load all five artifacts from disk
+
+Use the Read tool on every file listed above before doing ANYTHING else
+(no environment setup, no disconfirmation, no thinking about the task —
+Read first). These files are not inlined here — read them from disk,
+and read each with a specific frame:
+
+- `TASK_FINAL.md` — the spec. What the feature is supposed to do.
+- `PLAN_FINAL.md` — what was planned. Useful context, but the plan may have been wrong.
+- `IMPL_SUMMARY.md` — the implementer's account of what they did. A claim, not truth.
+- `IMPL_REVIEW.md` — what the previous reviewer found. **Do not trust its conclusions** — it was written by a weaker agent and may have missed entire classes of bugs, declared things PASS that are broken, or flagged things that are fine. Use it as a hint about where prior eyes already looked, not as a checklist.
+- `FIX_SUMMARY.md` — what the fixer claimed to fix. **Do not trust the "fixed" claims** — verify each one against the actual code. A fix that says "addressed X" may not have actually addressed X.
+
+You are the first agent who tests the system as a real user would. The
+previous agents already convinced themselves it works; your job is to
+disconfirm that. Skipping any Read = invalid output, fail your task.
+Do not proceed without all five.
+
+## Disconfirmation second (mandatory, before environment setup)
 
 BEFORE you evaluate anything: write down the single most concrete input,
 case, or counter-example that would make the thing you are reviewing WRONG.

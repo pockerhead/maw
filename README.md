@@ -204,7 +204,7 @@ First run asks two things, both saved to `maw/settings.json`.
 | `never` | Feature branch only |
 | `ask` | Prompt each time |
 
-**Agent model and effort.** Every spawned agent runs on `sonnet` at `medium` effort by default. On first run MAW asks whether to keep the defaults or customize per agent. Effort is a prompt directive injected at spawn (`medium` injects nothing, `high` pushes exhaustive verification, `low` favors speed); model is passed via the Task tool's `model` parameter.
+**Agent model and effort.** Every spawned agent runs on `sonnet` at `medium` effort by default. On first run MAW asks whether to keep the defaults or customize per agent. Effort is a **real Claude Code effort level** baked into each generated subagent variant (`maw-<stem>-<effort>` in `.claude/agents/`) — not a prose directive; the orchestrator selects the variant by name at spawn. Model is passed via the Task tool's `model` parameter. The higher levels (`xhigh`, `max`) require an Opus model; the orchestrator stops and asks rather than pairing them with `sonnet`/`haiku`.
 
 ```json
 {
@@ -216,7 +216,7 @@ First run asks two things, both saved to `maw/settings.json`.
 }
 ```
 
-Agent names: `clarifier`, `premise-challenge`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`. Models: `sonnet`, `opus`, `haiku`. Effort: `low`, `medium`, `high`. Edit `maw/settings.json` directly to change the defaults later.
+Agent names: `clarifier`, `premise-challenge`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`. Models: `sonnet`, `opus`, `haiku`. Effort: `low`, `medium`, `high`, `xhigh`, `max` (`xhigh`/`max` are Opus-only). Edit `maw/settings.json` directly to change the defaults later.
 
 **Per-task override.** A task can override both for itself via optional `task.md` header lines, which beat `settings.json` for that task only:
 

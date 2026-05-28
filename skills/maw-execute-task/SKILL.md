@@ -28,7 +28,7 @@ Agent names everywhere are the agent file stems: `clarifier`, `premise-challenge
 - `worktree_mode`: `always` — always create a git worktree for the task (default if user picks this); `never` — work on a feature branch directly, no worktree; `ask` — ask the user each time before starting a task
 - `agent_model`: model every spawned agent runs on by default. `sonnet` (default), `opus`, or `haiku`.
 - `agent_model_overrides`: optional map of agent name → model for agents that should differ from `agent_model`. Omit the key (or the whole field) to use `agent_model`.
-- `agent_effort`: default prompt-effort directive injected into every agent. `low`, `medium` (default), or `high`. `medium` injects nothing (lean default); `low` and `high` inject a short directive — see Step 0.6.
+- `agent_effort`: default effort level for every spawned agent. `low`, `medium` (default), `high`, `xhigh`, or `max`. This is a **real** Claude Code effort level baked into each subagent variant — not a prose directive. The orchestrator picks the matching subagent variant by name at spawn (see Step 0.6). `xhigh` and `max` require an Opus model (`max` is Opus-only; `xhigh` is Opus 4.7+).
 - `agent_effort_overrides`: optional map of agent name → effort for agents that should differ from `agent_effort`.
 
 Both model and effort can also be overridden **per task** in `task.md` (see Step 0.6 precedence) — `task.md` always beats `settings.json`.
@@ -58,7 +58,46 @@ Read `Mode:` right after picking the task (Step 0) and store it as `MODE`. Later
 
 You are the orchestrator. Do not implement anything yourself. Your job is to spawn agents in sequence using the Task tool and pass artifacts between them via files.
 
-**Agent prompts live in `agents/` directory** (relative to this skill). For each step, read the corresponding agent file, substitute variables (`{WORK_ROOT}`, `{TASK_DIR}`, `{REPO_ROOT}`, and file contents), then spawn the agent with the resulting prompt. Spawn it with the `model` parameter and effort directive resolved per Step 0.6.
+**Agents are named subagents**, generated at install into `.claude/agents/` as `maw-<stem>-<effort>.md` (9 stems × 5 effort levels). Their bodies are static role prompts — you do **not** read them. For each step you call the Task tool with:
+
+- `subagent_type` = `maw-<stem>-<effort>`, where `<effort>` is resolved per Step 0.6 (e.g. `maw-code-reviewer-high`).
+- `model` = resolved per Step 0.6.
+- `prompt` = the **dynamic spawn prompt** you build for that stem (see "How to build a spawn prompt" below). This is the only thing carrying paths, artifacts, per-mode source, and the project-context overlay — the static body has none of it.
+
+### How to build a spawn prompt
+
+The subagent body already contains the role, instructions, and output format. Your spawn prompt supplies only what is dynamic. Build it as:
+
+1. **Path header** (always, first):
+   ```
+   Working directory: {WORK_ROOT}/
+   Task dir: {WORK_ROOT}/{TASK_DIR}/
+   Repo root: {REPO_ROOT}
+   ```
+2. **Stem-specific dynamic content** from the table below. "Inline" = paste the file's contents into the prompt under a labelled `---` block. "Path" = give the path and let the agent Read it (its body has the mandatory-Read discipline).
+3. **Project-context overlay** (Step 0.7) appended at the very end, if `PCTX/` exists.
+
+| stem | inline into prompt | reference as path | per-mode |
+|---|---|---|---|
+| `clarifier` | `task.md` (as "Task:") | — | — |
+| `premise-challenge` | premise source = `TASK_FINAL.md`, else `task.md` (as "Task — the premise under audit:") | — | source falls back to `task.md` when no `TASK_FINAL.md` |
+| `planner` | task source = `TASK_FINAL.md` (full/brainstorm) or `task.md` (deep-research) (as "Task:") | — | deep-research: prepend the research-report directive (below) |
+| `plan-reviewer-1` | — | `TASK_FINAL.md` (task spec), `PLAN.md` (plan to review) | — |
+| `plan-reviewer-2` | — | `TASK_FINAL.md` (task spec), `PLAN_V2.md` (plan to review) | — |
+| `implementer` | spec (as "Task:") + plan (as "Implementation plan:") | — | small-fix: spec = `task.md`, plan = the small-fix fallback text (below) |
+| `code-reviewer` | — | spec, `PLAN_FINAL.md` (final plan), `IMPL_SUMMARY.md` | small-fix: omit the plan line; spec = `task.md` |
+| `fixer` | spec (as "Task:") + plan (as "Final plan:") | `IMPL_REVIEW.md` (review to act on) | small-fix: spec = `task.md`, plan = the small-fix fallback text (below) |
+| `qa` | — | spec, `PLAN_FINAL.md`, `IMPL_SUMMARY.md`, `IMPL_REVIEW.md`, `FIX_SUMMARY.md` | small-fix: omit the plan line; spec = `task.md` |
+
+"spec" = `TASK_FINAL.md` in `full` mode, `task.md` in `small-fix` mode. All paths are under `{WORK_ROOT}/{TASK_DIR}/`.
+
+**Deep-research directive** (prepend to the `planner` spawn prompt only when `MODE` is `deep-research`):
+
+> Mode: deep-research. Focus on researching best practices, existing solutions, and tradeoffs. Use WebSearch and WebFetch extensively. Output a research report, not an implementation plan. Cite sources with URLs. Compare at least 2-3 alternative approaches. Do not write file-level change steps — the goal is to inform a human decision, not to drive an implementer.
+
+**Small-fix plan fallback text** (use as the inlined "plan" for `implementer`/`fixer` in `small-fix` mode):
+
+> No plan file — this is small-fix mode. task.md is the spec (inlined above). Make the minimal set of changes needed to satisfy the acceptance criteria. Open every file before editing. Do not expand scope beyond what task.md asks for.
 
 ### Step 0 — Pick a task
 
@@ -128,9 +167,11 @@ Store the effective choice for this run in a variable `USE_WORKTREE` (true/false
    a. Sonnet (default) — all 9 agents on sonnet.
    b. Customize — sonnet by default, pick a different model for specific agents.
 2. Effort level for pipeline agents?
-   a. Medium (default) — no extra directive.
+   a. Medium (default) — real Claude Code effort, no per-agent tuning.
    b. Customize — medium by default, raise/lower effort for specific agents.
 ```
+
+Effort levels are `low`, `medium`, `high`, `xhigh`, `max`. They are real Claude Code effort levels (each maps to a generated subagent variant), not prose. `xhigh`/`max` require Opus — if the user picks one for an agent, that agent's resolved model must be Opus or the spawn is rejected (see the clamp below).
 
 For each "Customize", ask which agents and which value. Then write the result back into `maw/settings.json`, preserving `worktree_mode` (read the existing file first, merge — do not clobber other fields):
 
@@ -156,7 +197,7 @@ Models: default=opus, code-reviewer=opus
 Effort: default=high, implementer=low
 ```
 
-Parse each line as comma-separated tokens: `default=<v>` (or a bare `<v>`) sets the task-wide value for that dimension; `<agent-name>=<v>` sets it for one agent. Missing line / missing token → no per-task value at that level. Invalid model or effort value → stop and report to the user.
+Parse each line as comma-separated tokens: `default=<v>` (or a bare `<v>`) sets the task-wide value for that dimension; `<agent-name>=<v>` sets it for one agent. Missing line / missing token → no per-task value at that level. Valid models: `sonnet`, `opus`, `haiku`. Valid efforts: `low`, `medium`, `high`, `xhigh`, `max`. Invalid model or effort value → stop and report to the user.
 
 **Resolution (per agent, for both model and effort). Highest match wins:**
 
@@ -166,15 +207,14 @@ Parse each line as comma-separated tokens: `default=<v>` (or a bare `<v>`) sets 
 4. `settings.json` `agent_model` / `agent_effort`
 5. built-in default: model `sonnet`, effort `medium`
 
+**Effort × model coherence clamp (mandatory, after resolution).** `xhigh` and `max` are Opus-tier effort levels (`max` needs Opus; `xhigh` needs Opus 4.7+). For each agent, after resolving both dimensions: if the resolved effort is `xhigh` or `max` and the resolved model is not `opus`, **stop and report to the user** — name the agent and tell them to either lower the effort or set that agent's model to `opus`. Never silently downgrade the effort or auto-bump the model; the cost change is the user's call.
+
 **Applying the resolved values at every agent spawn below:**
 
 - **Model** → pass as the Task tool `model` parameter.
-- **Effort** → prepend an effort directive to the agent's spawn prompt:
-  - `medium` → prepend nothing.
-  - `high` → `Effort: HIGH. Be exhaustive. Open files fully, verify every claim against actual code, probe edge cases and failure paths, do not shortcut or assume.`
-  - `low` → `Effort: LOW. Optimize for speed. Smallest correct change, skip optional exploration and deep dives, do not gold-plate.`
+- **Effort** → select the subagent variant by name. The Task tool `subagent_type` is `maw-<stem>-<effort>` — e.g. resolved `plan-reviewer-1` at effort `max` → `subagent_type="maw-plan-reviewer-1-max"`. Effort is real Claude Code effort baked into that variant's frontmatter; there is no prose directive and nothing to prepend.
 
-This is the only thing that varies per agent — pipeline shape and the rest of each prompt are unaffected.
+This is the only thing that varies per agent — pipeline shape and the rest of each spawn prompt are unaffected.
 
 ### Step 0.7 — Project context overlay (generic; no-op when absent)
 
@@ -220,7 +260,7 @@ You are not asked to guess domains from prose. Pre-inject only what `task.md Dom
 
 **Precedence (generic; same lattice as model/effort in Step 0.6):** `task.md` inline override > project context > base/agent default. The injected header states this so it is visible, not silent.
 
-This is the only project-specific seam: conditional reads plus one append plus `{PCTX}` substitution. Files in `agents/` are never modified for project specifics.
+This is the only project-specific seam: conditional reads plus one append plus `{PCTX}` substitution. Agent bodies are never modified for project specifics.
 
 ### Step 1 — Create branch (and worktree if enabled)
 
@@ -285,7 +325,7 @@ Define shorthands for prompts:
 
 For `full` and `brainstorm`: spawn only if the task description is thin (no acceptance criteria, no technical context, ambiguous scope). Skip if already detailed enough.
 
-Read `agents/clarifier.md`. Substitute variables and task contents. Spawn the agent.
+Spawn `clarifier`: `subagent_type=maw-clarifier-<effort>` (effort/model resolved per Step 0.6), `prompt` built per "How to build a spawn prompt" — path header + inline `task.md` as "Task:". You do not read the agent body.
 
 **After agent finishes:** read `{WORK_ROOT}/{TASK_DIR}/TASK_FINAL.md`. If it contains a non-empty `## Open questions` section — present those questions to the user, wait for answers, then append them under `### Resolved questions` and remove the `## Open questions` section. (The clarifier is a subagent and cannot ask the user directly — relaying its questions is the orchestrator's job, same pattern as Step 3.)
 
@@ -297,7 +337,7 @@ If skipped, write `{WORK_ROOT}/{TASK_DIR}/TASK_FINAL.md` with the original task 
 
 Why this exists: every later stage verifies the *solution within the premise* and inherits the premise's lineage (task.md → TASK_FINAL → plan → reviews). Nothing else attacks the premise itself. This is the one isolated check that does, and the only thing that historically catches a wrong premise is a concrete counter-example from outside the lineage.
 
-Read `agents/premise-challenge.md`. Substitute variables. **Pass it only** the premise source (`TASK_FINAL.md` if it exists, else `task.md`) and the working/repo paths — **never** your own root-cause writeup, a summary, the plan, or any reviewer note. The agent investigates primary sources (code at `file:line`, an executable result it runs, the raw failing artifact) itself; isolation from the lineage is the whole point. Spawn the agent. Do **not** apply the "weaker agent" adversarial framing here — this agent has its own evidence-bound framing; the adversarial framing is for solution reviewers only.
+Spawn `premise-challenge`: `subagent_type=maw-premise-challenge-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + inline the premise source as "Task — the premise under audit:". **Pass it only** the premise source (`TASK_FINAL.md` if it exists, else `task.md`) and the working/repo paths — **never** your own root-cause writeup, a summary, the plan, or any reviewer note. The agent investigates primary sources (code at `file:line`, an executable result it runs, the raw failing artifact) itself; isolation from the lineage is the whole point. Do **not** add the "weaker agent" adversarial framing to the spawn prompt here — this agent has its own evidence-bound framing baked into its body; the adversarial framing is for solution reviewers only.
 
 **After agent finishes:** read `{WORK_ROOT}/{TASK_DIR}/PREMISE_CHALLENGE.md`.
 
@@ -312,7 +352,7 @@ Read `agents/premise-challenge.md`. Substitute variables. **Pass it only** the p
 - `full` or `brainstorm`: `TASK_FINAL.md`
 - `deep-research`: `task.md` directly
 
-Read `agents/planner.md`. Substitute variables and task contents. For `deep-research` mode, prepend the deep-research prefix from the agent file. Spawn the agent.
+Spawn `planner`: `subagent_type=maw-planner-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + inline the task source as "Task:". For `deep-research` mode, prepend the **Deep-research directive** from the spawn-prompt section above (it lives in this SKILL.md now, not in the agent body).
 
 **After agent finishes:** read `{WORK_ROOT}/{TASK_DIR}/PLAN.md`. If "Open questions" is non-empty — present to user, wait for answers, append to `TASK_FINAL.md` under `### Resolved questions`.
 
@@ -320,19 +360,19 @@ Read `agents/planner.md`. Substitute variables and task contents. For `deep-rese
 
 **Mode gate:** skip if `MODE` is `small-fix`.
 
-Read `agents/plan-reviewer-1.md`. Substitute variables only — `TASK_FINAL.md` and `PLAN.md` are read from disk by the agent itself (mandatory Read block in the prompt), not inlined here. Spawn the agent.
+Spawn `plan-reviewer-1`: `subagent_type=maw-plan-reviewer-1-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + the paths of `TASK_FINAL.md` (task spec) and `PLAN.md` (plan to review). These are referenced as paths, not inlined — the agent body has the mandatory-Read discipline and loads them from disk itself.
 
 ### Step 5 — Plan reviewer 2 (final plan)
 
 **Mode gate:** skip if `MODE` is `small-fix`.
 
-Read `agents/plan-reviewer-2.md`. Substitute variables only — `TASK_FINAL.md` and `PLAN_V2.md` are read from disk by the agent itself (mandatory Read block in the prompt), not inlined here. Spawn the agent.
+Spawn `plan-reviewer-2`: `subagent_type=maw-plan-reviewer-2-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + the paths of `TASK_FINAL.md` (task spec) and `PLAN_V2.md` (plan to review). Referenced as paths, not inlined — the agent body loads them from disk itself.
 
 ### Step 6 — Implementer agent
 
 **Mode gate:** skip if `MODE` is `brainstorm` or `deep-research`. Jump to Step 10.
 
-Read `agents/implementer.md`. For `small-fix` mode, follow the small-fix fallback instructions in the agent file. Substitute variables and spawn.
+Spawn `implementer`: `subagent_type=maw-implementer-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + inline the spec as "Task:" and the plan as "Implementation plan:". For `small-fix` mode, follow the small-fix row in the spawn-prompt table above (spec = `task.md`, plan = the small-fix fallback text).
 
 **After agent finishes:** read `{WORK_ROOT}/{TASK_DIR}/IMPL_SUMMARY.md`. If it contains `Verdict: PLAN_BLOCKED` — **treat exactly like a FAIL verdict**: pause, surface `IMPL_SUMMARY.md` to the user verbatim, wait for instructions. Do **not** spawn the code-reviewer. The plan, not the code, is what is in question — the user decides whether to amend `PLAN_FINAL.md`, restart planning, or override. This is the implementer's pre-flight escape hatch for catching a broken-presupposition plan before wrong code materializes.
 
@@ -340,19 +380,19 @@ Read `agents/implementer.md`. For `small-fix` mode, follow the small-fix fallbac
 
 **Mode gate:** skip if `MODE` is `brainstorm` or `deep-research`.
 
-Read `agents/code-reviewer.md`. For `small-fix` mode, follow the small-fix note in the agent file. Substitute variables and spawn.
+Spawn `code-reviewer`: `subagent_type=maw-code-reviewer-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + the paths of the spec, `PLAN_FINAL.md`, and `IMPL_SUMMARY.md` (referenced as paths, loaded by the agent itself). For `small-fix` mode, follow the small-fix row in the table: omit the plan line, spec = `task.md`.
 
 ### Step 8 — Implementation fixer
 
 **Mode gate:** skip if `MODE` is `brainstorm` or `deep-research`.
 
-Read `agents/fixer.md`. For `small-fix` mode, follow the small-fix note in the agent file. Substitute variables and spawn.
+Spawn `fixer`: `subagent_type=maw-fixer-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + inline the spec as "Task:" and the plan as "Final plan:", plus the path of `IMPL_REVIEW.md` (loaded by the agent itself). For `small-fix` mode, follow the small-fix row: spec = `task.md`, plan = the small-fix fallback text.
 
 ### Step 9 — QA agent
 
 **Mode gate:** skip if `MODE` is `brainstorm` or `deep-research`.
 
-Read `agents/qa.md`. For `small-fix` mode, follow the small-fix note in the agent file. Substitute variables and spawn.
+Spawn `qa`: `subagent_type=maw-qa-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + the paths of the spec, `PLAN_FINAL.md`, `IMPL_SUMMARY.md`, `IMPL_REVIEW.md`, and `FIX_SUMMARY.md` (referenced as paths, loaded by the agent itself). For `small-fix` mode, follow the small-fix row: omit the plan line, spec = `task.md`.
 
 ### Step 10 — Wrap up
 
@@ -467,9 +507,9 @@ This is why the Step 0.7 overlay exists at all, and why it must be inlined rathe
 
 - Never implement anything yourself. You only spawn agents and move files/folders.
 - Each agent is a fresh Task call with no conversation history — all context must be in the spawn prompt.
-- Every Task spawn passes a `model` parameter and (if not `medium`) an effort directive, both resolved via the Step 0.6 precedence (task.md beats settings.json). Never spawn without resolving them.
+- Every Task spawn passes a `model` parameter and a `subagent_type` of `maw-<stem>-<effort>`, both resolved via the Step 0.6 precedence (task.md beats settings.json). Effort is the named subagent variant, not a prose directive — there is nothing to prepend. Never spawn without resolving both.
 - After every Task spawn returns, append a row to `metrics.md` from the result's `<usage>` trailer (see the Metrics ledger section). No spawn is exempt — clarifier, reviewers, QA, retries, re-spawns all get a row.
-- Before every Task spawn, apply the Step 0.7 project-context overlay (no-op if `PCTX/` is absent), substituting `{PCTX}` to the real path. Pre-inject domain modules per `task.md Domains:`; never guess domains from prose — the constant catalog is the self-load net. Never edit files in `agents/` for project specifics — the overlay is the only seam. Never let a pipeline agent write into `PCTX/`; agents only append proposals to the task-local `PCTX_PROPOSALS.md`.
+- Before every Task spawn, apply the Step 0.7 project-context overlay (no-op if `PCTX/` is absent), substituting `{PCTX}` to the real path. Pre-inject domain modules per `task.md Domains:`; never guess domains from prose — the constant catalog is the self-load net. Never bake project specifics into the agent bodies — the overlay is the only seam. Never let a pipeline agent write into `PCTX/`; agents only append proposals to the task-local `PCTX_PROPOSALS.md`.
 - `maw/ROADMAP.md` (if present) is a derived view of the task.md `## Dependencies` sections — never authoritative. On any disagreement, task.md wins and the graph is regenerated, never the reverse. It is optional; absence is not an error.
 - If a Task call fails or produces no output file, retry once with an explicit instruction to write the output file before finishing.
 - Never merge to main without user confirmation.

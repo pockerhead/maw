@@ -80,6 +80,8 @@ This touches auth and is hard to roll back. Suggested reinforcement:
 Apply? [yes] [no] [edit]
 ```
 
+Effort values are `low`, `medium`, `high`, `xhigh`, `max`. `xhigh` and `max` are Opus-only — if you propose one of them for an agent, pair it with `code-reviewer → opus` (or whichever agent) in the same suggestion, or the orchestrator will stop and ask. For most reinforcement `effort=high` on the default model is enough; reach for `xhigh`/`max` only when the task is both high-risk and the agent is already on Opus.
+
 If the user accepts (or edits), record it as `Models:` / `Effort:` lines in Step 3. If declined or not warranted, write nothing.
 
 ### Step 2.7 — Infer dependencies and validate with the user

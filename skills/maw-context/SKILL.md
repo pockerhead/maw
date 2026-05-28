@@ -38,10 +38,9 @@ Check whether `maw/project-context/README.md` exists.
 
 Create `maw/project-context/README.md` with this skeleton. Do not invent project facts — leave marked placeholders. Create `domains/` and `agents/` lazily (Step 2), never empty.
 
-```markdown
-# Project context (NORMATIVE — injected into every MAW agent, every stage)
-# CONSTANT ONLY. Domain-specific → domains/<name>.md. Stage-specific → agents/<stem>.md.
+The body of this file is injected verbatim into every agent's spawn prompt, so it must read as content **for** the agent — never as a note to yourself about where things go (that discipline lives in this skill and in Step 4 validation, not in the file). The orchestrator already wraps it under a `## Project context (NORMATIVE — a constraint you must satisfy)` heading, so do not repeat a title or a "this is injected everywhere" line. Start at `## Orientation`:
 
+```markdown
 ## Orientation
 <!-- 2-4 lines: what this project is, the stack, the one architectural law
      nobody may break. A fresh-context agent is blind without this. -->

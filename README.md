@@ -80,6 +80,8 @@ Add to your project's `CLAUDE.md`:
 @.claude/skills/maw-context/SKILL.md
 ```
 
+**Restart Claude Code after installing (or reinstalling).** The pipeline agents are named subagents in `.claude/agents/`, and Claude Code discovers them at session start — they will not be picked up mid-session. After running `install.sh`, start a fresh session (or reload the window) before invoking `/maw-execute-task`, or the orchestrator's `subagent_type` spawns will fail to resolve.
+
 ## Usage
 
 Create tasks:

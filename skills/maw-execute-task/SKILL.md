@@ -69,6 +69,12 @@ Clamp rules (mandatory, after resolution — Step 0.6):
 - A model not in this table: reject and report — unless `allow_unverified_profile: true`, in which case pass it through to the provider with an explicit warning in the run log and metrics (`(unverified)` suffix in the Model column) and no capability claims; a spawn failure on such a profile is not retried, it is reported.
 - Model validity is provider-scoped: `opus` under provider=codex or `gpt-5.6-sol` under provider=claude → stop and report (see Step 0.6 explicit-wins-or-fails).
 
+**Cross-tier dominance notes (July 2026, external benchmarks; approximate — refresh together with the catalog version):**
+
+- claude: `fable` at **low** effort outperforms `opus` at max on hard agentic coding (SWE-bench Pro ~75 vs ~69) at roughly half the per-task cost — fable-low is the cheap entry to the premium tier; no opus effort reaches fable. `sonnet` at xhigh can cost **more** than opus at comparable accuracy — sonnet's value zone is low..high; do not chase opus with sonnet-xhigh.
+- codex: `gpt-5.6-sol` at medium beats `terra` at xhigh on intelligence benchmarks — terra is a latency/throughput tier, not a catch-up tier; `luna` and `sol` sit on the intelligence-per-cost Pareto frontier. `ultra` on sol is a different mechanism, not a bigger thinking budget: it coordinates parallel subagents with synthesis (~2–3× cost, small single-digit accuracy gains).
+- Rule of thumb when building profiles: **raise effort within a model for cost control; switch tier for capability; never max-out a lower tier to imitate a higher one** — cross-tier catch-up via effort is Pareto-inefficient on both providers.
+
 ---
 
 ## Modes

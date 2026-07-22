@@ -84,6 +84,10 @@ Effort values are `low`, `medium`, `high`, `xhigh`, `max` (plus `ultra` for code
 
 **Cross-provider reinforcement.** If the project has a second provider configured (see `providers` in `maw/settings.json`), you may also propose moving a review stage to the other provider — a cross-vendor reviewer has different blind spots, which is worth the most on high-risk tasks: e.g. `code-reviewer → provider=codex, gpt-5.6-sol, effort=xhigh`. Record it as a `Providers:` line alongside `Models:`/`Effort:`. Never propose a provider that is not configured/installed.
 
+**Premium tier.** When a task's value concentrates in one stage doing genuinely hard reasoning or research — architecture-critical decisions, deep research on contested technical ground, security-critical review — propose the premium tier for that **single** stage: claude `fable`, or codex effort `ultra` (5.6 family). Name the cost tier explicitly in the proposal (the orchestrator will additionally ask a one-time cost confirmation before the first premium spawn). Do not propose premium for more than one stage without stating why; do not propose it for routine tasks at all.
+
+**Reviewer-not-weaker rule.** In stages where the reviewer rewrites the artifact (both plan reviewers), propose profiles so the reviewer's model/effort is not weaker than the artifact author's — a weaker rewriter can silently degrade correct work. Deliberate exceptions (e.g. a cheap first-pass triage reviewer before a stronger final reviewer) are allowed but must be named as such in the proposal's one-line reason.
+
 If the user accepts (or edits), record it as `Providers:` / `Models:` / `Effort:` lines in Step 3. If declined or not warranted, write nothing.
 
 ### Step 2.7 — Infer dependencies and validate with the user

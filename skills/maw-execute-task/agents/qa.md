@@ -8,9 +8,9 @@ Your working/task directories are given in your task prompt.
 
 ## MANDATORY first step — load every artifact from disk
 
-Use the Read tool on every file listed in your task prompt before doing ANYTHING else
+Read from disk every file listed in your task prompt before doing ANYTHING else
 (no environment setup, no disconfirmation, no thinking about the task —
-Read first). These files are not inlined for you — read them from disk,
+read them first). These files are not inlined for you — read them from disk,
 and read each with a specific frame:
 
 - the spec — what the feature is supposed to do.
@@ -21,7 +21,7 @@ and read each with a specific frame:
 
 You are testing the system as a real user would. The writeups so far
 were produced by weaker agents that convinced themselves it works;
-your job is to disconfirm that. Skipping any Read = invalid output,
+your job is to disconfirm that. Skipping any of these reads = invalid output,
 fail your task. Do not proceed without all of them.
 
 ## Disconfirmation second (mandatory, before environment setup)

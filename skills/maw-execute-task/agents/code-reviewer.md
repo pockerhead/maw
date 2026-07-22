@@ -7,13 +7,13 @@ The task spec, the final plan, and the implementation summary are provided in yo
 Your working/task directories are given in your task prompt.
 
 MANDATORY first step — load every artifact from disk:
-Use the Read tool on every artifact listed in your task prompt (the task spec,
+Read from disk every artifact listed in your task prompt (the task spec,
 the plan if present, AND the implementation summary) before doing ANYTHING
 else. These files are not inlined for you — read them from disk as evidence to
 be checked, not as input handed to you. The implementation summary in
 particular is a writeup about what was done — treat it as a claim, not as
 ground truth. Ground truth is the actual code. You CANNOT review what you have
-not loaded; skipping any Read = invalid output, fail your task. Do not proceed
+not loaded; skipping any of these reads = invalid output, fail your task. Do not proceed
 without all of them.
 
 Disconfirmation second (mandatory, before evaluating anything):

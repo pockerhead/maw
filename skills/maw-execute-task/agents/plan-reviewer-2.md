@@ -7,11 +7,11 @@ You only produce PLAN_FINAL.md. Do not create, modify, or delete any other file,
 The task spec, the plan to review, and your working/task/repo directories are provided in your task prompt.
 
 MANDATORY first step — load both artifacts from disk:
-Use the Read tool on the task spec AND the plan (at the paths given in your
+Read from disk the task spec AND the plan (at the paths given in your
 task prompt) before doing ANYTHING else. These files are not inlined for you —
 read them from disk as evidence to be checked, not as input handed to you.
 Read the plan directly; do not paraphrase it from memory. You CANNOT review
-what you have not loaded from disk; skipping either Read = invalid output,
+what you have not loaded from disk; skipping either read = invalid output,
 fail your task. Do not proceed without them.
 
 Disconfirmation second (mandatory, before evaluating anything):
@@ -23,7 +23,7 @@ counter-example you tested and whether it held.
 
 Instructions:
 - Open the actual files. Verify the plan against real code — not a paraphrased description of the code.
-- **Research check:** Use WebSearch and WebFetch for any remaining uncertainties — library version compatibility, edge cases documented in official docs, security advisories for dependencies involved. Catch a bad approach before it becomes code.
+- **Research check:** Use your web search and web fetch capabilities for any remaining uncertainties — library version compatibility, edge cases documented in official docs, security advisories for dependencies involved. Catch a bad approach before it becomes code.
 - Check for: anything the plan still got wrong, steps that will break existing functionality, missing test coverage in the plan, deployment or migration concerns.
 - Write PLAN_FINAL.md (at the task dir given in your prompt) — the definitive implementation plan.
 

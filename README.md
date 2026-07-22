@@ -1,4 +1,4 @@
-# MAW — Multi-Agent Workflow for Claude Code
+# MAW — Multi-Agent Workflow for Claude Code & Codex CLI
 
 **Prompt rules tell an LLM what to do. MAW adds a verification layer for when it doesn't listen.**
 
@@ -23,6 +23,8 @@ Compare:
 ## Architecture
 
 ![MAW pipeline architecture](assets/maw_pipeline_architecture.svg)
+
+*(The diagram shows the stage flow; the provider dispatch layer — which harness runs each stage — is described under Settings below.)*
 
 Key design decisions:
 - **No shared context** — agents communicate only through files (task.md, PLAN.md, diffs). No chat history carries over. This is a common pattern in adversarial pipelines, but MAW enforces it across every stage including planning.
@@ -71,7 +73,12 @@ Branch: bugfix/fix-profile-404
 curl -fsSL https://raw.githubusercontent.com/pockerhead/maw/main/install.sh | sh
 ```
 
-Add to your project's `CLAUDE.md`:
+With no flags the installer detects which harnesses are present (`claude`, `codex`) and installs a surface for each. Explicit targets: `sh install.sh --claude`, `--codex`, or `--all`. On Windows run it through Git Bash (`sh install.sh`); a native `install.ps1` twin is planned but not shipped yet.
+
+- **Claude Code surface**: `.claude/skills/{maw-execute-task,maw-tasks,maw-context}/` (+ raw agent bodies) and 45 named subagents in `.claude/agents/`.
+- **Codex CLI surface**: `.agents/skills/{maw-execute-task,maw-tasks,maw-context}/` (+ raw agent bodies) — repository-scoped skills, committable, so teammates on the other harness get a working install from git without re-running the installer.
+
+For Claude Code, add to your project's `CLAUDE.md`:
 
 ```markdown
 ## Skills
@@ -80,7 +87,7 @@ Add to your project's `CLAUDE.md`:
 @.claude/skills/maw-context/SKILL.md
 ```
 
-**Restart Claude Code after installing (or reinstalling).** The pipeline agents are named subagents in `.claude/agents/`, and Claude Code discovers them at session start — they will not be picked up mid-session. After running `install.sh`, start a fresh session (or reload the window) before invoking `/maw-execute-task`, or the orchestrator's `subagent_type` spawns will fail to resolve.
+**Restart the harness after installing (or reinstalling).** Claude Code discovers the named subagents in `.claude/agents/` at session start; Codex discovers repository skills at startup — neither picks them up mid-session. Start a fresh session before invoking `/maw-execute-task`, or spawns will fail to resolve.
 
 ## Usage
 
@@ -131,13 +138,13 @@ maw/tasks/done/TASK-001/
 └── metrics.md        ← per-agent tokens / tool uses / duration + task total
 ```
 
-`metrics.md` is written by the orchestrator (not by agents — they never see it). One row per agent spawn, including retries and re-spawns, parsed from each Task result's usage trailer, with a `TOTAL` row summing the whole task. Present in every mode.
+`metrics.md` is written by the orchestrator (not by agents — they never see it). One row per agent spawn, including retries and re-spawns, with provider/model/effort columns; usage comes from the Task result's usage trailer (native spawns) or the CLI's JSON output (external spawns). Wrap-up appends per-provider `SUBTOTAL` rows plus a `TOTAL` row (spawn count, tool uses, duration — token counts are never summed across providers). Present in every mode.
 
 **small-fix:** task.md + IMPL_SUMMARY.md + IMPL_REVIEW.md + FIX_SUMMARY.md + QA_REPORT.md + metrics.md
 
 **brainstorm:** task.md + TASK_FINAL.md + PREMISE_CHALLENGE.md + PLAN.md + PLAN_V2.md + PLAN_FINAL.md + metrics.md
 
-**deep-research:** task.md + PREMISE_CHALLENGE.md + PLAN.md (research report) + PLAN_V2.md + PLAN_FINAL.md + metrics.md
+**deep-research:** task.md + TASK_FINAL.md (orchestrator-written copy of task.md) + PREMISE_CHALLENGE.md + PLAN.md (research report) + PLAN_V2.md + PLAN_FINAL.md + metrics.md
 
 Plus `PCTX_PROPOSALS.md` in any task where an agent proposed a project-context change (see below).
 
@@ -156,7 +163,7 @@ If `maw/project-context/` does not exist, the pipeline behaves byte-for-byte as 
 - `domains/<name>.md` — **domain-gated**, normative. Injected into every running stage (planner and reviewers included — planning correctness needs it) when the task is in that domain. It gets there two ways: pre-injected because `task.md` declared `Domains:` (a recorded decision `/maw-tasks` proposes and the user confirms), or self-loaded when an agent hits an observable catalog trigger a task did not predict (the recall safety net). Subsystem invariants, risk lessons, and pointers to bulky docs live here.
 - `agents/<stem>.md` — **stage-gated**, into one agent only. Build/test/runtime-QA tooling and stage skills — clarifier and planners do not carry tooling they never use.
 
-A subagent inherits nothing — not `CLAUDE.md`, not `@`-imports, not notebooks (a verified Claude Code invariant the pipeline is built around), so everything needed must be injected or self-`Read`. Project context is normative as **law to satisfy, not a claim to audit** — review agents verify the code satisfies it; whether the law itself is right is human-gated via `/maw-context --review`. Agents never edit the overlay: they append dated entries to that task's `PCTX_PROPOSALS.md`, folded in deliberately.
+A subagent inherits nothing — not `CLAUDE.md`, not `@`-imports, not notebooks (a verified Claude Code invariant the pipeline is built around), so everything needed must be injected or read from disk by the agent itself. Project context is normative as **law to satisfy, not a claim to audit** — review agents verify the code satisfies it; whether the law itself is right is human-gated via `/maw-context --review`. Agents never edit the overlay: they append dated entries to that task's `PCTX_PROPOSALS.md`, folded in deliberately.
 
 This is reduced, human-authored machinery — a hand-written catalog and human-declared `Domains:`, no resolution engine, no token-budget gate, no includes. The base change is the orchestrator plus the `maw-context`/`maw-tasks` skills; the overlay seam never modifies the agent prompts.
 
@@ -174,10 +181,10 @@ The adversarial multi-agent space is growing. Several tools take different slice
 | Scope | Task → QA (full cycle) | Feature + audit + docs | Planning → building → eval | Planning + execution | Code review only |
 | Modes | 4 (full, small-fix, brainstorm, deep-research) | brainstorm + audit | — | --fast flag | Cost-gating by diff score |
 | Task management | Built-in (pending/done/blocked) | No | No | No | No |
-| Provider | Claude Code | Claude Code | Claude SDK + Codex SDK | Claude/Codex/Cursor/API | Claude Code |
+| Provider | Claude Code + Codex CLI (per-stage) | Claude Code | Claude SDK + Codex SDK | Claude/Codex/Cursor/API | Claude Code |
 | Install | One curl | cp -r | git clone + pip | pip install | /plugin marketplace |
 
-MAW's specific niche: full lifecycle with built-in task tracking and mode-based cost control. If you need only code review, ng/adversarial-review is more focused. If you need provider-agnostic planning, Forge AI is better suited.
+MAW's specific niche: full lifecycle with built-in task tracking, mode-based cost control, and per-stage provider assignment (e.g. cross-vendor code review). If you need only code review, ng/adversarial-review is more focused.
 
 ## Cost and when to use
 
@@ -191,6 +198,8 @@ MAW trades tokens for reliability. Token consumption depends on mode:
 | deep-research | 80–150k | $0.3–1 |
 
 Each agent consumes 40–70k tokens on a medium-sized codebase. Implementer and Code Review can exceed 100k on complex tasks. At Opus pricing, multiply accordingly.
+
+Codex-provider stages are billed per your Codex auth mode (ChatGPT plan quota or API-key tokens) — the table above prices Claude tokens only; `metrics.md` keeps per-provider subtotals and never sums tokens across providers.
 
 The tradeoff: if the cost of shipping a bug exceeds the cost of running the pipeline, use MAW. Modes let you pick the right level of rigor per task instead of paying for the full pipeline every time.
 
@@ -206,28 +215,38 @@ First run asks two things, both saved to `maw/settings.json`.
 | `never` | Feature branch only |
 | `ask` | Prompt each time |
 
-**Agent model and effort.** Every spawned agent runs on `sonnet` at `medium` effort by default. On first run MAW asks whether to keep the defaults or customize per agent. Effort is a **real Claude Code effort level** baked into each generated subagent variant (`maw-<stem>-<effort>` in `.claude/agents/`) — not a prose directive; the orchestrator selects the variant by name at spawn. Model is passed via the Task tool's `model` parameter. The higher levels (`xhigh`, `max`) require an Opus model; the orchestrator stops and asks rather than pairing them with `sonnet`/`haiku`.
+**Agent provider, model, and effort.** Every agent resolves an atomic profile `(provider, model, effort)`. Zero-config default: every agent runs on the host harness's provider with that provider's defaults (`claude: sonnet/medium`, `codex: gpt-5.6-sol/medium`). On the Claude-native path, effort is a **real Claude Code effort level** baked into each generated subagent variant (`maw-<stem>-<effort>` in `.claude/agents/`) and model is the Task tool's `model` parameter; on the external path (cross-provider stages, or a Codex host) both are CLI flags on a one-shot headless spawn.
 
 ```json
 {
   "worktree_mode": "always",
-  "agent_model": "sonnet",
-  "agent_model_overrides": { "planner": "opus", "code-reviewer": "opus" },
-  "agent_effort": "medium",
-  "agent_effort_overrides": { "code-reviewer": "high", "qa": "high" }
+  "default_provider": "host",
+  "providers": {
+    "claude": { "default_model": "sonnet",      "default_effort": "medium" },
+    "codex":  { "default_model": "gpt-5.6-sol", "default_effort": "medium" }
+  },
+  "agents": {
+    "code-reviewer": { "provider": "codex", "model": "gpt-5.6-sol", "effort": "xhigh" },
+    "planner":       { "model": "opus" }
+  }
 }
 ```
 
-Agent names: `clarifier`, `premise-challenge`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`. Models: `sonnet`, `opus`, `haiku`. Effort: `low`, `medium`, `high`, `xhigh`, `max` (`xhigh`/`max` are Opus-only). Edit `maw/settings.json` directly to change the defaults later.
+(Legacy v1 settings — `agent_model`/`agent_effort` + override maps — are migrated automatically on first run, preserving behavior. Other keys: `spawn_timeout_min` — wall-clock cap per external spawn, default 30; `allow_unverified_profile` — pass unknown models through with a warning instead of rejecting, default false; `auto_invoke_guard` — per-skill map gating model-chosen invocation, e.g. `{ "maw-execute-task": true }`, values `true` (confirm first, default when absent) | `false` (unattended) | `"never"` (decline).)
 
-**Per-task override.** A task can override both for itself via optional `task.md` header lines, which beat `settings.json` for that task only:
+Agent names: `clarifier`, `premise-challenge`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`. Models are provider-scoped — claude: `sonnet`, `opus`, `haiku`, `fable`; codex: `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`. Effort: `low`, `medium`, `high`, `xhigh`, `max` (plus `ultra` on codex 5.6-family). Effort validity depends on the model (claude `haiku` caps at `high`; codex `gpt-5.5` caps at `xhigh`) — the orchestrator clamps against its versioned capability catalog and **stops with a report on an invalid pair; nothing silently downgrades**. Edit `maw/settings.json` directly to change the defaults later.
+
+**Cross-provider agents (experimental).** Any pipeline stage can run on a different harness than the orchestrator — e.g. code review on Codex while everything else runs on Claude. A cross-vendor reviewer brings a genuinely different prior, so its blind spots correlate less with the implementer's. External spawns are one-shot headless CLI runs with ambient-context isolation flags (the child is instructed not to load the project's AGENTS.md/CLAUDE.md; suppression is canary-tested per machine as part of preflight), a fresh context, and per-spawn usage accounting where the CLI provides it (codex: yes; claude external: pending fixture — recorded as `n/a` until then). Requirements: the other CLI installed and logged in; the orchestrator preflights binary, auth, and a transport probe before a task leaves `pending/`. Token subtotals in `metrics.md` are per-provider — cross-provider counts are never summed (different tokenizers). **Status:** the cross-provider and Codex-host paths are experimental until the acceptance checklist in `docs/ACCEPTANCE.md` is green. The Claude-native path is unchanged in mechanics, with two newly specified rules pending an E2E run each (deep-research spec fallback; local-only+worktree copy-back) — see the same checklist.
+
+**Per-task override.** A task can override all three via optional `task.md` header lines, which beat `settings.json` for that task only:
 
 ```markdown
-Models: default=opus, code-reviewer=opus
-Effort: code-reviewer=high, qa=high
+Providers: code-reviewer=codex
+Models: default=opus, code-reviewer=gpt-5.6-sol
+Effort: code-reviewer=xhigh, qa=high
 ```
 
-Each line is comma-separated tokens: `default=<v>` sets the task-wide value, `<agent>=<v>` sets one agent. When you create a task with `/maw-tasks`, MAW may itself propose reinforcing specific agents (stronger model / higher effort) for risky tasks — auth, payments, migrations, concurrency — which you confirm, edit, or decline. Resolution precedence: task.md per-agent → task.md task-wide → settings.json overrides → settings.json default → built-in (`sonnet`/`medium`).
+Each line is comma-separated tokens: `default=<v>` sets the task-wide value, `<agent>=<v>` sets one agent. An explicit per-agent value that contradicts the resolved provider (e.g. `Providers: code-reviewer=codex` + `Models: code-reviewer=opus`) is a hard stop, not a silent substitution; inherited task-wide values simply don't apply to agents on another provider. When you create a task with `/maw-tasks`, MAW may itself propose reinforcing specific agents (stronger model / higher effort / cross-provider review) for risky tasks — auth, payments, migrations, concurrency — which you confirm, edit, or decline. Resolution precedence: task.md per-agent → task.md task-wide → settings.json `agents` → settings.json defaults → built-in.
 
 ## License
 

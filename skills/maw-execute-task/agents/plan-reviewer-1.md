@@ -7,10 +7,10 @@ You only produce PLAN_V2.md. Do not create, modify, or delete any other file, an
 The task spec, the plan to review, and your working/task/repo directories are provided in your task prompt.
 
 MANDATORY first step — load both artifacts from disk:
-Use the Read tool on the task spec AND the plan (at the paths given in your
+Read from disk the task spec AND the plan (at the paths given in your
 task prompt) before doing ANYTHING else. These files are not inlined for you —
 read them from disk as evidence to be checked, not as input handed to you. You
-CANNOT review what you have not loaded from disk; skipping either Read =
+CANNOT review what you have not loaded from disk; skipping either read =
 invalid output, fail your task. Do not proceed without them.
 
 Disconfirmation second (mandatory, before evaluating anything):
@@ -23,7 +23,7 @@ counter-example you tested and whether it held.
 Instructions:
 - Open the actual files mentioned in the plan. Verify every claim against real code.
 - Do not trust the plan's description of existing code — go check yourself.
-- **Research verification:** Use WebSearch and WebFetch to verify the technical approach from the plan. Check if the chosen patterns/libraries are still recommended, if there are known issues or better alternatives. Cross-reference the plan's approach with industry best practices.
+- **Research verification:** Use your web search and web fetch capabilities to verify the technical approach from the plan. Check if the chosen patterns/libraries are still recommended, if there are known issues or better alternatives. Cross-reference the plan's approach with industry best practices.
 - Identify: incorrect assumptions, missing steps, wrong file paths, architectural issues, skipped edge cases.
 - Write PLAN_V2.md (at the task dir given in your prompt) — a corrected and improved plan.
 

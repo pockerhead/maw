@@ -40,10 +40,10 @@ Ask the user a **single focused question at a time**. Do not dump a questionnair
 
 Before writing the task, determine which MAW mode fits. MAW has four modes that control which subset of the pipeline runs:
 
-- **full** — Clarifier → Planner → Plan Review x2 → Implementer → Code Review → Fixer → QA. The complete 7-agent cycle.
+- **full** — Clarifier → Premise Challenge → Planner → Plan Review x2 → Implementer → Code Review → Fixer → QA. The complete 9-agent cycle.
 - **small-fix** — Implementer → Code Review → Fixer → QA. Skips planning; task.md IS the spec.
-- **brainstorm** — Clarifier → Planner → Plan Review x2. Stops after PLAN_FINAL.md. No code written.
-- **deep-research** — Planner (web search emphasis) → Plan Review x2. Research report, not an implementation plan.
+- **brainstorm** — Clarifier → Premise Challenge → Planner → Plan Review x2. Stops after PLAN_FINAL.md. No code written.
+- **deep-research** — Premise Challenge → Planner (web search emphasis) → Plan Review x2. Research report, not an implementation plan.
 
 **If the user passed `--mode <mode>`:** skip the suggestion, use that mode directly. Valid values: `full`, `small-fix`, `brainstorm`, `deep-research`. Invalid → ask the user to pick one.
 
@@ -80,9 +80,11 @@ This touches auth and is hard to roll back. Suggested reinforcement:
 Apply? [yes] [no] [edit]
 ```
 
-Effort values are `low`, `medium`, `high`, `xhigh`, `max`. `xhigh` and `max` are Opus-only — if you propose one of them for an agent, pair it with `code-reviewer → opus` (or whichever agent) in the same suggestion, or the orchestrator will stop and ask. For most reinforcement `effort=high` on the default model is enough; reach for `xhigh`/`max` only when the task is both high-risk and the agent is already on Opus.
+Effort values are `low`, `medium`, `high`, `xhigh`, `max` (plus `ultra` for codex-provider 5.6-family models only). Effort validity is model-specific — the orchestrator clamps against its Provider capability catalog (e.g. claude `haiku` caps at `high`; codex `gpt-5.5` caps at `xhigh`) and stops on an invalid pair rather than silently downgrading. Propose coherent pairs: if you suggest `xhigh`/`max`, pair it with a model that supports it in the same suggestion. For most reinforcement `effort=high` on the default model is enough.
 
-If the user accepts (or edits), record it as `Models:` / `Effort:` lines in Step 3. If declined or not warranted, write nothing.
+**Cross-provider reinforcement.** If the project has a second provider configured (see `providers` in `maw/settings.json`), you may also propose moving a review stage to the other provider — a cross-vendor reviewer has different blind spots, which is worth the most on high-risk tasks: e.g. `code-reviewer → provider=codex, gpt-5.6-sol, effort=xhigh`. Record it as a `Providers:` line alongside `Models:`/`Effort:`. Never propose a provider that is not configured/installed.
+
+If the user accepts (or edits), record it as `Providers:` / `Models:` / `Effort:` lines in Step 3. If declined or not warranted, write nothing.
 
 ### Step 2.7 — Infer dependencies and validate with the user
 
@@ -136,7 +138,8 @@ Type: {feature|bugfix|refactor|chore}
 Mode: {full|small-fix|brainstorm|deep-research}
 Priority: {high|medium|low}
 Branch: {type}/{kebab-case-title}
-{Models: default=opus, code-reviewer=opus}   <- optional, only if reinforced in Step 2.6
+{Providers: code-reviewer=codex}             <- optional, only if reinforced in Step 2.6
+{Models: default=opus, code-reviewer=gpt-5.6-sol}   <- optional, only if reinforced in Step 2.6
 {Effort: code-reviewer=high, qa=high}        <- optional, only if reinforced in Step 2.6
 {Domains: auth, persistence}                 <- optional, only if matched in Step 2.8
 
@@ -166,7 +169,7 @@ Reference specific files/endpoints/components if mentioned.}
 - Acceptance criteria: testable, atomic, checkbox format. Always include "Existing tests pass" as the last criterion. For `brainstorm` and `deep-research` modes, criteria describe what the plan/report must cover rather than runtime behavior.
 - Dependencies: write only the relations confirmed in Step 2.7. Fill only the lines that apply. If Step 2.7 concluded zero `blocked by` AND zero `prefer after` AND zero `unblocks`, **omit the whole `## Dependencies` section** — do not leave empty bullets or placeholders. `maw/ROADMAP.md` is derived from this section (Step 5).
 - No `Status` field inside the file — the parent directory (`pending/`, `in_progress/`, etc.) is the status.
-- `Models:` / `Effort:` lines: optional, written only if Step 2.6 reinforcement was accepted. Syntax: comma-separated tokens, each `default=<v>` (task-wide) or `<agent-name>=<v>` (one agent). Models: `sonnet|opus|haiku`. Effort: `low|medium|high`. Agent names are the 9 stems (`clarifier`, `premise-challenge`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`). These beat `maw/settings.json` for this task only. Omit the lines entirely when not reinforced.
+- `Providers:` / `Models:` / `Effort:` lines: optional, written only if Step 2.6 reinforcement was accepted. Syntax: comma-separated tokens, each `default=<v>` (task-wide) or `<agent-name>=<v>` (one agent). Providers: `claude|codex`. Models (provider-scoped): claude `sonnet|opus|haiku|fable`; codex `gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna|gpt-5.5`. Effort: `low|medium|high|xhigh|max` (`ultra` codex-5.6-only). Effort×model validity is clamped by the orchestrator's capability catalog. Agent names are the 9 stems (`clarifier`, `premise-challenge`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`). These beat `maw/settings.json` for this task only. Omit the lines entirely when not reinforced.
 - `Domains:` line: optional, written only if Step 2.8 matched (and only if `maw/project-context/domains/` exists). Comma-separated domain names matching `maw/project-context/domains/<name>.md`. The pipeline pre-injects these modules into planner and reviewers. Omit the line entirely when none match or there is no overlay.
 
 ### Step 4 — Confirm and save
@@ -184,7 +187,7 @@ On confirmation:
 
 **If `maw/` IS in `.gitignore`** (local-only mode):
 - Do NOT commit. The task files stay local and are not tracked by git.
-- Worktree-based workflows won't see these files — the user manages tasks locally.
+- Worktree runs still work: the orchestrator copies the active task (and project-context overlay) into the worktree at start and syncs the result back at wrap-up — the main tree's `maw/` stays authoritative.
 
 ### Step 5 — Regenerate the roadmap graph
 

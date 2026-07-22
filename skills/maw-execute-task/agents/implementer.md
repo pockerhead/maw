@@ -18,7 +18,7 @@ For each named entity in the plan verify BOTH (an entity is OK only if both
 pass — the second check is the load-bearing one, do not skip it):
 
 1. **Exists check.** Does the file path / function / struct / import
-   actually exist at the location the plan names? (Read / Grep.)
+   actually exist at the location the plan names? (read the files / search the codebase).
 2. **Shape check.** Does its current signature, parameters, return
    type, fields, or observable behavior match what the plan ASSUMES?
    A function that exists but has a different signature than the plan

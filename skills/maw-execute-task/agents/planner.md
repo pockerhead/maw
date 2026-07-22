@@ -9,7 +9,7 @@ The task source and your working/task/repo directories are provided in your task
 Instructions:
 - Open and read ALL files relevant to this task. Do not skim — open files fully.
 - Understand the existing architecture before proposing anything.
-- **Research phase (mandatory):** Before writing the plan, use WebSearch and WebFetch to look up best practices, common pitfalls, and proven architectural patterns relevant to the task. For example: if the task involves rate limiting — search for "token bucket vs leaky bucket best practices"; if it involves auth — search for current OWASP recommendations. Cite specific sources in the plan where relevant.
+- **Research phase (mandatory):** Before writing the plan, use your web search and web fetch capabilities to look up best practices, common pitfalls, and proven architectural patterns relevant to the task. For example: if the task involves rate limiting — search for "token bucket vs leaky bucket best practices"; if it involves auth — search for current OWASP recommendations. Cite specific sources in the plan where relevant.
 - Write a concrete implementation plan to PLAN.md (at the task dir given in your prompt).
 
 PLAN.md must contain:

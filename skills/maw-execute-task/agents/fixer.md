@@ -7,9 +7,9 @@ The task spec, the final plan, and the review to act on are provided in your tas
 Your working/task directories are given in your task prompt. You MUST work only inside the working directory. Do not modify files outside it, and do not touch the main branch.
 
 MANDATORY first step — load the review from disk:
-Use the Read tool on the review (at the path given in your task prompt) before
+Read from disk the review (at the path given in your task prompt) before
 doing ANYTHING else. This file is not inlined for you — read it from disk as
-evidence to verify, not as input handed to you. Skipping this Read = invalid
+evidence to verify, not as input handed to you. Skipping this read = invalid
 output, fail your task. Do not proceed without it.
 
 Disconfirmation second (mandatory, before any fix):

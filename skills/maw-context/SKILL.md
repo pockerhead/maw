@@ -62,8 +62,8 @@ The body of this file is injected verbatim into every agent's spawn prompt, so i
 
 HARD RULE: before you plan or write any part whose work matches a trigger
 above — even if this task was not framed as being in that domain — you MUST
-Read the mapped module first and treat it as normative. Do not proceed on
-that part without it.
+read the mapped module from disk first and treat it as normative. Do not
+proceed on that part without it.
 ```
 
 Domain module skeleton (`domains/<name>.md`, created in Step 2 when the user has one):
@@ -79,7 +79,7 @@ Domain module skeleton (`domains/<name>.md`, created in Step 2 when the user has
 <!-- Curated, dated, one line each. Folded here via Step 3, not raw dumps. -->
 
 ## Pointers
-<!-- Bulky canonical docs to Read (not paste): path → what it contains. -->
+<!-- Bulky canonical docs to read from disk (not paste): path → what it contains. -->
 ```
 
 Per-agent file (`agents/<stem>.md`): only created in Step 2 when a single stage has tooling/skills the others must not carry.
@@ -92,7 +92,7 @@ Ask what class of knowledge is being added, then route it:
 
 - **Universal invariant** (any change, any subsystem) → `README.md` `## Universal invariants`. Keep it 3-7 lines total; if it is subsystem-specific it is not universal.
 - **Domain invariant or risk lesson** (matters only in subsystem X) → `domains/X.md` (`## Invariants` / `## Risk lessons`). Create the module if absent **and** add/confirm its `## Domain catalog` line in `README.md` with a zero-knowledge-observable trigger (path glob / literal token — never a concept). The trigger is the recall safety net; a concept-only trigger is a defect.
-- **Bulky doc / lesson file / notebook to reference, not inline** → the `## Pointers` section of the relevant `domains/X.md` (path + what it contains). Never pasted; agents Read it when in that domain.
+- **Bulky doc / lesson file / notebook to reference, not inline** → the `## Pointers` section of the relevant `domains/X.md` (path + what it contains). Never pasted; agents read it from disk when in that domain.
 - **Tooling** (build/test/runtime-QA command, MCP server, LSP op) → `agents/<stem>.md` for the stage(s) that run it (implementer/fixer/qa/code-reviewer). Not README.
 - **Custom project skill** → `agents/<stem>.md` for the stage that invokes it: skill name + when to call it.
 
@@ -115,7 +115,7 @@ Never auto-fold. A proposal from one pipeline run is unverified by design — th
 Run after any write, or on request:
 
 - `README.md` exists, non-empty, and has only `## Orientation`, `## Universal invariants`, `## Domain catalog` — no tooling, no per-stage content, no pasted bulky docs.
-- Every `## Domain catalog` line: trigger is zero-knowledge-observable (path/glob/literal token, not a concept), is one line, and its `{PCTX}/domains/<name>.md` target file actually exists. Dangling catalog entry or concept-only trigger → flag (an agent told to Read a missing file, or unable to recognize the trigger from zero knowledge, is a hole).
+- Every `## Domain catalog` line: trigger is zero-knowledge-observable (path/glob/literal token, not a concept), is one line, and its `{PCTX}/domains/<name>.md` target file actually exists. Dangling catalog entry or concept-only trigger → flag (an agent told to read a missing file, or unable to recognize the trigger from zero knowledge, is a hole).
 - Every domain module referenced by the catalog has a catalog entry, and vice versa (no orphans either direction).
 - No raw notebook dumps or whole-doc pastes anywhere — bulky sources are `## Pointers` references, not pasted.
 - README is reasonably short for being injected every spawn; if it is heavy, warn and propose cuts / moving content into domain modules.

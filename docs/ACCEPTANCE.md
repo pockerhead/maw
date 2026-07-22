@@ -20,7 +20,9 @@ Honest status ledger. GREEN = executed on this machine (Windows 11, codex-cli 0.
 | codex `--ephemeral` flag exists | `codex exec --help` | GREEN |
 | claude `--effort`, `--no-session-persistence`, `auth status` | `claude --help` / live auth status | GREEN |
 | claude -p external spawn writes artifact in WORK_ROOT (cwd correctness) | probe spawn with cd/Push-Location, worktree path | RED |
-| transport probe through full runner path (temp dir + stdin + isolation + artifact) | Step 0.65 probe executed end-to-end | RED |
+| transport probe through full runner path (temp dir + stdin + isolation + artifact) | Step 0.65 probe executed end-to-end | GREEN (live: TASK-002 resume preflight, canary NO-PROJECT-DOCS) |
+| codex external spawn: artifact + usage parsing (events.jsonl) | live cross-provider stage | GREEN (live: TASK-002 PR2 — usage parsed, artifact delivered) |
+| codex Windows workspace-write degradation → read-only + materialization fallback | live observation | GREEN (observed + handled live; fallback now contractual for single-artifact stages) |
 | per-role capability profiles (review-only / implement / research / QA) under real parent sandbox | prototype spawns per role class | RED |
 | timeout kill + cleanup on success/failure/timeout/cancel | forced-timeout test | RED |
 | PowerShell stdin/CRLF/UTF-8 through both pipes | canary with non-ASCII content | RED |
@@ -48,9 +50,9 @@ Honest status ledger. GREEN = executed on this machine (Windows 11, codex-cli 0.
 
 | Row | How | Status |
 |---|---|---|
-| Windows-native (PowerShell host) full lifecycle pending→in_progress→done|blocked, both persistence modes × branch/worktree, paths with spaces | E2E run under Codex host | RED |
+| Windows-native (PowerShell host) full lifecycle pending→in_progress→done|blocked, both persistence modes × branch/worktree, paths with spaces | E2E run under Codex host | PARTIAL — git-tracked × branch-only GREEN (live test-bed on Windows, claude -p host: TASK-001 small-fix incl. QA retry, TASK-002 deep-research incl. cross-provider stage); worktree, local-only, spaces, Codex host all RED |
 | local-only + worktree copy-back on done/blocked | E2E | RED (rule now specified in Step 10) |
-| mode-slice grid (4 modes × 2 persistence × worktree/branch) | E2E matrix | RED |
-| deep-research TASK_FINAL fallback | single deep-research run | RED (rule fixed in Step 2) |
+| mode-slice grid (4 modes × 2 persistence × worktree/branch) | E2E matrix | RED (small-fix and deep-research covered on git-tracked × branch-only only) |
+| deep-research TASK_FINAL fallback | single deep-research run | GREEN (live: TASK-002 — orchestrator wrote TASK_FINAL.md on mode-gate skip, reviewers consumed it) |
 
 RED rows are the work queue for the verification phase; none of the cross-provider or Codex-host paths should be advertised as production-ready until their rows are green. Two RED rows also touch the Claude-native path: the deep-research `TASK_FINAL.md` fallback and the local-only+worktree copy-back are newly specified rules that need one E2E run each; the rest of the native path's mechanics are unchanged.

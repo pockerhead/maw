@@ -42,8 +42,11 @@ Honest status ledger. GREEN = executed on this machine (Windows 11, codex-cli 0.
 | layout matches SKILL.md expectations (agents/<stem>.md beside SKILL.md) | reviewed statically by Codex | GREEN |
 | counts (3 skills, 9 bodies, 45 variants) | static check | GREEN |
 | idempotent re-run, fetch-failure rollback, interruption | live installer runs in a scratch repo | RED |
-| `.agents/skills` discovery by installed codex | install into a test repo, invoke skill | RED |
-| shared SKILL.md frontmatter loads in both harnesses | same test repo | RED |
+| `.agents/skills` discovery by installed codex | install into a test repo, invoke skill | GREEN (live: TASK-004 — codex host read and executed both maw-tasks and maw-execute-task skills) |
+| shared SKILL.md frontmatter loads in both harnesses | same test repo | GREEN (live: same files driven by both hosts across TASK-001..004) |
+| Codex-hosted full pipeline E2E (deep-research) | live run | GREEN (live: TASK-004 — 4 stages, cross-vendor chain, materialization mode, per-provider metrics; Windows requires sandbox-off host, see Hosting) |
+| claude -p as external provider under a Codex host | live run | GREEN (live: TASK-004 planner = fable/high via claude -p, 12m48s; usage columns n/a pending fixture) |
+| nested codex read-only degradation + sandbox-user auth wall documented | live observations | GREEN (contract: materialization mode + sandbox-off hosting requirement) |
 | install.ps1 twin | not shipped (documented: use Git Bash) | DEFERRED by decision |
 
 ## State machine

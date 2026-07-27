@@ -6,7 +6,10 @@ Honest status ledger. GREEN = executed on this machine (Windows 11, codex-cli 0.
 
 | Row | How | Status |
 |---|---|---|
-| codex ambient-doc suppression, repo root | canary AGENTS.md, `--ignore-user-config -c project_doc_max_bytes=0` | GREEN (NO-PROJECT-DOCS) |
+| codex **project**-doc suppression, repo root | canary AGENTS.md, `--ignore-user-config -c project_doc_max_bytes=0` | GREEN (NO-PROJECT-DOCS) |
+| codex **user-level** doc suppression (`$CODEX_HOME/AGENTS.md`) | flags alone vs. private `CODEX_HOME` (auth.json + config.toml copied), canary asks about home-directory instructions | GREEN — flags alone LEAK (child quotes the user AGENTS.md under both `project_doc_max_bytes=0` and `--ignore-user-config`); private CODEX_HOME reports no instruction blocks at all (2026-07-27, codex 0.145) |
+| private CODEX_HOME does not break workspace-write | same `workspace-write` spawn writes a file, with and without `config.toml` copied | GREEN — writes with config.toml copied; read-only rejection without it (Windows `[windows] sandbox` lost) |
+| codex **host** ambient docs | no suppression mechanism exists in an interactive session | ACCEPTED BY DESIGN — host carries operator AGENTS.md; contract precedence + no-paraphrase rule in SKILL.md Hosting |
 | claude project-doc suppression | canary CLAUDE.md, `--setting-sources user` | GREEN (project suppressed) |
 | claude FULL isolation (user+project) via empty value | `--setting-sources ""` (sh) / `"--setting-sources="` (PS) canary | RED — equals-form parse-accepted (exit 0), canary not yet run |
 | nested-directory canaries, both CLIs | canary file in a subdir of WORK_ROOT | RED |

@@ -129,24 +129,87 @@ done
 LEDGER="$RUN_DIR/SPAWNS.jsonl"
 [ -s "$LEDGER" ] || fail "artifacts exist but SPAWNS.jsonl is missing or empty, so no role was actually spawned. Artifacts without spawns are a simulated chain."
 
-# Count only lines that look like a real record: a stem, a zero exit, freshness.
-OK_LINES=$(grep -c '"stem"[[:space:]]*:.*"exit"[[:space:]]*:[[:space:]]*0.*"fresh"[[:space:]]*:[[:space:]]*true' "$LEDGER" 2>/dev/null || true)
-[ -n "$OK_LINES" ] || OK_LINES=0
-if [ "$OK_LINES" -lt "$EXPECTED_SPAWNS" ]; then
-  fail "only $OK_LINES successful spawn record(s); this run's manifest expects $EXPECTED_SPAWNS. A record needs a stem, exit 0 and fresh:true."
+# Ledger validation must PARSE the records, not grep them. Substring matching
+# was bypassable in three separate ways, all found by adversarial review:
+#   - {"event":"contract_violation","detail":{"stem":"attacker","exit":0,"fresh":true}}
+#     satisfies every substring test while recording that a role did NOT run;
+#   - a legitimate record with keys in a different order failed the ordered
+#     stem→exit→fresh pattern, so serialization order changed the verdict;
+#   - the intermediate file lived in the run dir, which every role can write,
+#     making a fixed name a symlink target for a hostile role.
+# Top-level fields only, real JSON, no temp file.
+LEDGER_CHECK='
+import json, sys
+path, expected = sys.argv[1], int(sys.argv[2])
+required = {"premise-check", "generator", "compressor", "attacker", "synthesizer"}
+ok, stems, malformed = 0, set(), 0
+for line in open(path, encoding="utf-8", errors="replace"):
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        rec = json.loads(line)
+    except Exception:
+        malformed += 1
+        continue
+    if not isinstance(rec, dict):
+        continue
+    # A spawn record is one with no competing event type and real top-level
+    # status fields. Nested copies of these keys are ignored by construction.
+    if rec.get("event") not in (None, "spawn"):
+        continue
+    stem = rec.get("stem")
+    if not isinstance(stem, str):
+        continue
+    if rec.get("exit") != 0 or rec.get("fresh") is not True:
+        continue
+    ok += 1
+    stems.add(stem)
+    u = rec.get("usage")
+    if isinstance(u, dict):
+        i, o = u.get("input_tokens"), u.get("output_tokens")
+        c, r = u.get("cached_input_tokens"), u.get("reasoning_output_tokens")
+        if isinstance(i, int) and isinstance(c, int) and c > i:
+            print(f"USAGE_ARITHMETIC {stem}: cached_input {c} > input {i}"); sys.exit(3)
+        if isinstance(o, int) and isinstance(r, int) and r > o:
+            print(f"USAGE_ARITHMETIC {stem}: reasoning_output {r} > output {o}"); sys.exit(3)
+missing = sorted(required - stems)
+if malformed:
+    print(f"MALFORMED {malformed}"); sys.exit(4)
+if ok < expected:
+    print(f"COUNT {ok}"); sys.exit(1)
+if missing:
+    print("MISSING " + ",".join(missing)); sys.exit(2)
+print("OK")
+'
+LEDGER_RESULT=""
+LEDGER_RC=0
+for PY in python3 python; do
+  command -v "$PY" >/dev/null 2>&1 || continue
+  # `set -e` would abort the script the moment the checker exits non-zero,
+  # skipping the case below entirely: the hook would die with python's exit
+  # code instead of 2, and a Stop hook only blocks on 2. So the run is
+  # deliberately unguarded here and the status captured by hand.
+  set +e
+  LEDGER_RESULT=$("$PY" -c "$LEDGER_CHECK" "$LEDGER" "$EXPECTED_SPAWNS" 2>/dev/null)
+  LEDGER_RC=$?
+  set -e
+  break
+done
+
+if [ -z "$LEDGER_RESULT" ]; then
+  # No interpreter: say so rather than pretending the ledger was checked.
+  echo "maw-reason gate: no python available; artifacts verified but SPAWNS.jsonl was NOT validated." >&2
+  exit 0
 fi
 
-# Distinct stems, counted only over spawn-shaped records. Non-spawn events
-# (assignment, observation, contract_violation) also carry a "stem" field, so a
-# bare stem match would let a role that never ran satisfy this check purely by
-# being named in an incident record - observed in the first live run's ledger.
-SPAWN_LINES="$RUN_DIR/.gate-spawn-lines"
-grep '"exit"[[:space:]]*:[[:space:]]*0' "$LEDGER" | grep '"fresh"[[:space:]]*:[[:space:]]*true' > "$SPAWN_LINES" 2>/dev/null || true
-DISTINCT=$(sed -n 's/.*"stem"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SPAWN_LINES" | sort -u | wc -l | tr -d ' ')
-for required in premise-check generator compressor attacker synthesizer; do
-  grep -q "\"stem\"[[:space:]]*:[[:space:]]*\"$required\"" "$SPAWN_LINES" \
-    || { rm -f "$SPAWN_LINES"; fail "no successful spawn recorded for role '$required' ($DISTINCT distinct stems among completed spawns). Being named in an incident record does not count as having run."; }
-done
-rm -f "$SPAWN_LINES"
+case "$LEDGER_RC" in
+  0) : ;;
+  1) fail "only ${LEDGER_RESULT#COUNT } successful spawn record(s); this run's manifest expects $EXPECTED_SPAWNS. A record needs a top-level stem, exit 0 and fresh:true, and must not be an incident record." ;;
+  2) fail "no successful spawn recorded for: ${LEDGER_RESULT#MISSING }. Being named inside an incident record does not count as having run." ;;
+  3) fail "ledger usage figures are internally inconsistent — ${LEDGER_RESULT#USAGE_ARITHMETIC }. Numbers that cannot be true were not parsed from the provider." ;;
+  4) fail "${LEDGER_RESULT#MALFORMED } malformed line(s) in SPAWNS.jsonl. A ledger that does not parse is not evidence." ;;
+  *) fail "ledger validation failed unexpectedly ($LEDGER_RESULT)." ;;
+esac
 
 exit 0

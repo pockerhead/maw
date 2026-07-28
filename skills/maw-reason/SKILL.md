@@ -109,9 +109,11 @@ Per-role `Effort:` in settings still overrides both profiles. Whatever runs, the
 | claude `sonnet`, output tokens | 218 | — | — | 1034 |
 | codex `gpt-5.6-sol`, reasoning tokens | 510 | 516 | 1552 | — |
 
-Effort reaches both transports — the flags are applied, and codex rejects an invalid value outright, so it is parsed rather than ignored. But on `gpt-5.6-sol` the low→high band is essentially flat, and the jump happens at `xhigh`. Consequence: **the `fast`/`deep` split barely moves a codex role**, because both profiles live inside that flat band. If a codex role is the one you need to think harder, `deep` is not enough — set its effort to `xhigh` explicitly in settings.
+Read that table as a **smoke test, not a response curve**. One task, one draw per level, and the two rows count different things — claude's figure is total output tokens (reasoning is not itemised there), codex's is the itemised reasoning field. They are not directly comparable, and a single sample cannot distinguish a flat band from ordinary variance.
 
-This also retires a claim from the first live run: its synthesis reported `attacker: medium requested (not enforced — ran at provider default)`. That was inference, not observation — the synthesizer has no view of the transport. Measurement contradicts it.
+What it does establish: effort reaches both transports. The flags are accepted, codex rejects an invalid effort value outright rather than ignoring it, and claude's output volume moves by nearly 5× between the extremes. What it *suggests*, pending repeated measurement: `gpt-5.6-sol` may be flat across low→high and only step up at `xhigh`, which would mean **the `fast`/`deep` split barely moves a codex role**. If that matters for your run, set the codex role's effort to `xhigh` explicitly rather than trusting the profile.
+
+This also bears on a claim from the first live run, whose synthesis reported `attacker: medium requested (not enforced — ran at provider default)`. That was inference — the synthesizer cannot see the transport. But the retraction has its own limit worth stating plainly: measuring that the **flag works in isolation** does not establish that the **coordinator actually passed it** during that run, and nothing in that run's ledger records the argv. Both the claim and its retraction are unproven for that specific run; only the general capability is measured.
 
 **Independence.** A conforming run puts the Generator on a different provider than the Compressor/Attacker, with all three execution profiles distinct. The coordinator **verifies** this against the resolved profile table rather than trusting the label it was handed — a caller that passes three same-provider profiles and the word `conforming` must not get a conforming claim in the output.
 
@@ -139,10 +141,12 @@ Report deliberation spawns, retries, and host overhead separately rather than as
 
 # Step 1 — Capture verbatim (the trust boundary)
 
-Create the run directory. Default location is a private temp dir — operational traces are ephemeral unless the human asks otherwise:
+Create the run directory **under the user's home, not in the OS temp tree**:
 
-- POSIX: `RUN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/maw-reason-XXXXXX")`
-- PowerShell: `$RunDir = Join-Path $env:TEMP ("maw-reason-" + [System.IO.Path]::GetRandomFileName()); New-Item -ItemType Directory $RunDir`
+- POSIX: `RUN_DIR="$HOME/.maw/reason-runs/maw-reason-$(date +%s)-$$"; mkdir -p "$RUN_DIR"`
+- PowerShell: `$RunDir = Join-Path $env:USERPROFILE ".maw\reason-runs\maw-reason-$([System.IO.Path]::GetRandomFileName())"; New-Item -ItemType Directory -Force $RunDir`
+
+**The location is load-bearing, not a preference.** Measured on this machine: a role granted `--add-dir` to one subdirectory can still read anything else under the OS temp tree, grant or no grant, while the same layout outside temp refuses the read. Putting the run dir in temp silently voids the per-role input scoping — which is exactly how the first live run's compressor read `CALLER_POSITION.md` it was never given. Traces stay ephemeral by being deleted at the end (Step 4), not by living in temp.
 
 Write a pointer at `maw/.reason-last-run` containing the absolute run path (one line). This is what the optional gate hook reads; add it to `.gitignore` if `maw/` is tracked.
 

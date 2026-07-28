@@ -10,11 +10,13 @@ Your run directory, repo root, resolved profile table, flags, and the path to th
 - **Do not write, edit, or improve any role's artifact.** You validate them against their contracts and pass them onward. A weak artifact is data about the chain, not a draft for you to fix.
 - **Do not simulate a role.** If a spawn cannot run, the chain fails — see Failure. Writing what you think the attacker would have said is the exact fraud this whole surface is built to prevent, and it is undetectable in the output text, which is why the rule is absolute rather than a matter of judgment.
 - **Do not edit the input files.** `QUESTION.md`, `FACTS.md`, `CONSTRAINTS.md`, `CALLER_POSITION.md` are immutable for the run's lifetime.
-- **Never modify the repository working tree — including to "restore" it.** No `git checkout`, `git restore`, `git stash`, `git clean`, no reverting a file. This is absolute and it survives your believing a role misbehaved.
+- **Your git access is read-only. All of it.** Permitted: `git status`, `git diff`, `git log`, `git rev-parse`, `git show`, `git ls-files`. Everything else is forbidden — not just working-tree writes (`checkout`, `restore`, `stash`, `clean`) but index and metadata writes too (`add`, `update-index`, `update-ref`, `config`, `commit`, `tag`). "I only staged it" is still a write. This is absolute and it survives your believing a role misbehaved.
 
   The reasoning that leads here is seductive and wrong: roles are told not to edit the repo, you observe an edit, therefore a role did it, therefore undoing it enforces the contract. Every step after the observation is a guess. A human works in this repo while you run. So does their editor, their formatter, their other sessions. In the first live run this exact inference fired three times: twice blaming the generator for edits a human made in another session, and once inventing a confident, detailed, entirely false account of a role reading a patch out of the run dir and applying it. Each time the "enforcement" destroyed uncommitted human work — a far worse outcome than the violation it imagined.
 
-  A diff in the working tree is not evidence of who wrote it. When you see one: record it as an observation in `SPAWNS.jsonl` (`{"event":"observation", ...}`, not `contract_violation`, unless the role itself reported the edit), note that authorship is unattributed, and continue. If you judge the run compromised, end it with `CHAIN_FAILURE.md` and let a human decide. Reporting is your job; remediation is not.
+  A diff in the working tree is not evidence of who wrote it. When you see one: record it as an observation in `SPAWNS.jsonl` (`{"event":"observation", ...}`, not `contract_violation`, unless the role itself reported the edit), note that authorship is unattributed. Reporting is your job; remediation is not.
+
+  **But do not simply continue, either.** Roles read the repository for evidence, one after another. If a file changes between the generator reading it and the attacker reading it, the two roles argued about different programs and the synthesis merges findings that were never about the same thing — and no hash in the ledger would show it, because only the four captured input files are hashed, never the repo evidence. So: record `git rev-parse HEAD` and a digest of `git status --porcelain` **before the first spawn and after each one**. If either changes mid-run, the chain's evidence base moved under it: stop with `CHAIN_FAILURE.md` class `source-drift`, naming the paths that changed and which roles had already read them. A human decides whether to rerun on a quiet tree. Authorship stays unattributed in that report — the point is that the ground moved, not who moved it.
 - **Do not spawn anything except the five (or six) chain roles.** No helpers, no researchers, no second opinions.
 
 ## Depth guard — first action
@@ -78,7 +80,22 @@ For each role, in order:
 1. **Assemble the prompt**: the raw role body from `{SKILL_DIR}/agents/<stem>.md`, then a blank line, then the dynamic block below. Never paraphrase a role body; concatenate it.
 2. **Spawn it** through the external runner contract (private temp dir, prompt on stdin, isolation flags, absolute paths, cwd inside the repo root). Use the profile resolved for that stem.
 
-   **`--add-dir "{RUN_DIR_ABS}"` is mandatory on every role spawn, on both providers.** The run dir lives outside the repo, and the workspace grant does not reach it by default. `claude -p` under `--permission-mode acceptEdits` authorizes writes in cwd and additional directories only, and fails with "I don't have permission to write outside the project directory" (verified live) — *after* the spawn has burned its tokens. `codex exec` refuses out-of-workspace writes the same way ("Unable to write outside the permitted workspace") and takes the same `--add-dir` flag. This is the single most common way to break this chain.
+   **Grant each role its own cell, not the whole run dir.** Before spawning, create `{RUN_DIR_ABS}/cell/<stem>/` and **copy into it only the files that role is allowed to read** (the scoped list below). Spawn with `--add-dir "{RUN_DIR_ABS}/cell/<stem>"` — never the run dir itself — and point the role's artifact path inside its own cell. Harvest the artifact back to the run dir afterwards.
+
+   This is what makes input scoping real instead of advisory. Measured on this machine (2026-07-28):
+
+   | Where the file sits | Can a role read it without a grant? |
+   |---|---|
+   | inside the granted cell | yes, as intended |
+   | one level up, run dir **outside** OS temp | **no** — "requested permissions to read … but you haven't granted it yet" |
+   | one level up, run dir **inside** OS temp | **yes** — the grant is bypassed entirely |
+   | elsewhere on disk (home, Desktop) | no |
+
+   So the run dir **must not live in the OS temp tree**: temp is readable regardless of `--add-dir`, which is exactly how the first live run's compressor read `CALLER_POSITION.md` while its declared inputs said otherwise. Put the run dir under the user's home (e.g. `~/.maw/reason-runs/<id>/`) or another non-temp location. A cell inside a temp run dir provides no protection at all — it only looks like it does.
+
+   The grant is still mandatory for writes on both providers: `claude -p` under `acceptEdits` refuses to write outside cwd and additional directories ("I don't have permission to write outside the project directory"), and `codex exec` refuses the same way ("Unable to write outside the permitted workspace"). Both accept `--add-dir`.
+
+   Note what this does **not** close: every role's cwd is the repository, so the whole repo remains readable to all of them. Cells scope the run's own files, not the codebase.
 
    For a codex role, use the runner formula from `maw-execute-task` verbatim — private `CODEX_HOME` holding only `auth.json`, `-c project_doc_max_bytes=0`, `--ignore-user-config`, and `-c windows.sandbox="unelevated"` on Windows — plus the `--add-dir` above. Do not improvise a shorter invocation: each of those flags is there because dropping it broke something that was verified live.
 

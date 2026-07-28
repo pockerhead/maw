@@ -159,7 +159,10 @@ A third surface, beside task intake and task execution. It answers a **question*
 /maw-reason --deep "..."             # raise compressor/attacker/synthesizer effort
 /maw-reason --keep "..."             # persist the trace for audit
 /maw-reason --high-assurance "..."   # two generators on distinct profiles (+1 spawn)
+/maw-reason --seed 2751937183 "..."  # reproduce a previous run's role assignment
 ```
+
+**Which model plays which role is drawn, not chosen.** A standing preference — generator on claude, attacker on codex — fixes the chain's blind spot in place, where it stays invisible because it never moves. So each run draws a 32-bit seed from OS entropy, records it in `RUN.json`, and uses it to decide the provider orientation; explicit per-role pins in settings are decisions and are left alone. The seed is printed in the synthesis, so a run can be repeated identically (`--seed`) or deliberately flipped to see whether the answer survives swapping who held which role.
 
 Five spawns: **premise check → generator → compressor → attacker → synthesizer**. The compressor is what makes it a dialectic rather than an ensemble — a non-author decides which claims are load-bearing and proposes the `attack_vector`, so the attacker cannot pick its own exemption surface. The vector is a floor: an off-vector scan is mandatory.
 

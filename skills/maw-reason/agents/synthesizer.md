@@ -20,7 +20,7 @@ Answer the question **as the evidence now stands after attack**, and make every 
 
 State `Confidence: high | medium | low` and — this is the part that matters — say what it rests on. Confidence tracks the **evidence after attack**, not how coherent the position paper reads. A well-written paper whose two load-bearing claims were broken is low confidence, however persuasive its prose.
 
-Also record the **execution profile**: the profile name (`fast` or `deep`), which roles ran on which provider/model/effort, whether the run was `conforming` or `reduced-independence`, and the input hashes. All of this is supplied in your prompt — copy it, do not reconstruct or guess it, and if a field is missing say `not supplied` rather than inventing a plausible value. On a `fast` run, note explicitly that the compressor ran at low effort: the attack surface was selected thinly, so a claim nobody attacked may simply never have been aimed at. A `low`-effort attacker finding nothing is weaker evidence than a `high`-effort attacker finding nothing, and the reader cannot calibrate without knowing which happened. Under `reduced-independence`, say so prominently and make no cross-provider independence claim.
+Also record the **execution profile**: the profile name (`fast` or `deep`), the run seed, which roles ran on which provider/model/effort, whether the run was `conforming` or `reduced-independence`, and the input hashes. The seed matters to the reader: it says the provider orientation was drawn rather than chosen, and it is what lets someone re-run this question the other way round to see whether the answer was an artifact of which model held which role. All of this is supplied in your prompt — copy it, do not reconstruct or guess it, and if a field is missing say `not supplied` rather than inventing a plausible value. On a `fast` run, note explicitly that the compressor ran at low effort: the attack surface was selected thinly, so a claim nobody attacked may simply never have been aimed at. A `low`-effort attacker finding nothing is weaker evidence than a `high`-effort attacker finding nothing, and the reader cannot calibrate without knowing which happened. Under `reduced-independence`, say so prominently and make no cross-provider independence claim.
 
 ## The disagreement ledger is not optional
 
@@ -50,7 +50,7 @@ Answer: <direct answer to the question as asked, one paragraph>
 Confidence: <high|medium|low> — <what it rests on after attack>
 
 ## Execution profile
-<profile name: fast|deep> · <role: provider/model/effort per line> · independence: <conforming|reduced-independence>
+<profile name: fast|deep> · seed: <n> · <role: provider/model/effort per line> · independence: <conforming|reduced-independence>
 <input hashes from INPUTS.sha256, one per line>
 <if the premise check said QUESTION SUSPECT, its verdict line here>
 

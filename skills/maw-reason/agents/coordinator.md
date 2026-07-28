@@ -26,6 +26,17 @@ You also do **not** have the Task tool. Claude Code strips `Agent` from every su
 
 **Verify the independence label rather than trusting it.** Re-derive it from the profile table you were given: `conforming` requires the generator's provider to differ from the compressor's and attacker's, and all three profiles to be distinct. If that does not hold, rewrite `independence` in `RUN.json` to `reduced-independence` and record why. A caller can hand you three same-provider profiles and the word `conforming`; your job is to make that claim false in the artifact rather than repeat it.
 
+### Apply the seed
+
+`RUN.json` carries a `seed`. Use it — do not decide the assignment yourself, and do not "pick randomly", which is how a model launders a preference.
+
+1. Roles whose `provider` came from `settings.agents.<stem>` are **pinned**; leave them exactly as given.
+2. Collect the distinct provider profiles available to the unpinned roles.
+3. If two or more are available, compute `seed mod 2`. `0` → generator takes the first provider, compressor and attacker take the second. `1` → the reverse. One provider available → no draw; the run is `reduced-independence`.
+4. For pass `n > 1`, use bit `n` of the seed (`(seed >> n) & 1`) to pick the compressor's profile for that pass. This is what satisfies the no-consecutive-identical-compressor rule mechanically instead of by your judgment.
+
+Record the resulting assignment and the arithmetic that produced it (`seed`, `seed mod 2`, which provider went where) in `SPAWNS.jsonl` as a first `{"event":"assignment", …}` line, and pass the seed to the synthesizer. A reader must be able to check that the orientation was drawn rather than chosen.
+
 ## Chain order
 
 ```

@@ -3,7 +3,7 @@ name: maw-reason
 description: |
   Expensive, human-invoked adversarial deliberation over a QUESTION (not a task). Runs a five-role chain — premise check, generator, compressor, attacker, synthesizer — as real isolated spawns, and returns a synthesis with an explicit disagreement ledger and what-would-change-my-mind.
   Use when the cost of being wrong is high and genuine uncertainty exists: architecture forks, irreversible migrations, "should we X or Y" with real stakes. Do NOT use for lookups, trivia, or questions a single careful answer settles — it costs roughly 200-350k tokens and several minutes.
-  Supports flags: --deep (raise compressor/attacker/synthesizer effort; the honest default for high-stakes questions), --keep (persist the trace for audit), --passes N (extra attack passes, default 1), --high-assurance (dual independent generators on distinct profiles, +1 spawn).
+  Supports flags: --deep (raise compressor/attacker/synthesizer effort; the honest default for high-stakes questions), --keep (persist the trace for audit), --passes N (extra attack passes, default 1), --high-assurance (dual independent generators on distinct profiles, +1 spawn), --seed N (reproduce a previous run's role assignment).
   Model-invocation is guarded: if the model reaches for this rather than the user typing it, the auto-invoke guard applies — the human sees the question, profile, and cost estimate and confirms before anything spawns.
 ---
 
@@ -63,14 +63,26 @@ Profiles resolve through the same machinery as `maw-execute-task` — `maw/setti
 
 There is no `task.md` here, so the per-task override layer of the pipeline does not exist. Resolution is: `settings.agents.<stem>` → `providers.<p>.default_*` → `default_provider` → host. The `--deep` flag sets effort **only where settings did not**: an explicit `settings.agents.attacker.effort` wins over the profile table, because an explicit value is a decision and a profile is a default.
 
-**Zero-config behaviour, stated plainly:** with `default_provider: "host"` every role resolves to claude, which is `reduced-independence` — and that now requires approval on every run. If you intend cross-provider deliberation, say so once in settings:
+**Zero-config behaviour, stated plainly:** with `default_provider: "host"` every role resolves to claude, which is `reduced-independence` — and that now requires approval on every run. To get cross-provider deliberation, put a second provider in the pool:
 
 ```json
 { "default_provider": "host",
-  "agents": { "generator": { "provider": "codex", "model": "gpt-5.6-sol" } } }
+  "providers": { "codex": { "default_model": "gpt-5.6-sol" } } }
 ```
 
-That is the minimum edit that makes a run `conforming`: the generator's provider differs from the compressor's and attacker's, and the three profiles are distinct. Putting the *attacker* on the second provider instead is also defensible and arguably better — it is the role whose independent prior does the most work — but then generator and compressor share a harness, so the compressor is judging a same-harness paper. Pick deliberately; the coordinator will report whichever you actually got.
+Note what this does *not* say: which role goes to which provider. That is the seed's job.
+
+### Seeded role assignment
+
+Whoever decides that the generator is claude and the attacker is codex has quietly decided what the chain's blind spot will be — and if that decision is a standing preference, the blind spot is the same on every run and therefore invisible. So the assignment is drawn, not chosen.
+
+- **Step 1 draws a 32-bit `seed`** from the OS entropy source (POSIX: `od -An -N4 -tu4 < /dev/urandom`; PowerShell: `Get-Random`) and records it in `RUN.json`. Never ask a model to "pick randomly" — that yields preferences with a random-sounding label.
+- **Explicit pins are not drawn.** A role with `provider` set in `settings.agents.<stem>` is a decision the human made and it stands. The draw only distributes roles that resolved by inheritance.
+- **With two or more providers in the pool**, `seed mod 2` decides the orientation: whether the generator gets provider A and the compressor/attacker get B, or the reverse. Both orientations are conforming, and they fail differently — which is the entire point of drawing rather than settling.
+- **Extra passes** consume successive bits of the same seed for compressor rotation, so the rotation requirement is satisfied by construction rather than by the coordinator's judgment.
+- `--seed <n>` reproduces a previous run exactly. The seed is printed in the synthesis, so "run it again the other way" and "run it again identically" are both available, and a reader can tell which orientation produced the answer they are holding.
+
+With one provider there is nothing to draw: the run is `reduced-independence` and needs approval regardless of the seed.
 
 ### Two effort profiles
 
@@ -140,6 +152,7 @@ Record the SHA-256 of each input file in `INPUTS.sha256`, and write a **run mani
 
 ```json
 { "run_id": "...", "profile": "fast|deep", "passes": 1, "high_assurance": false,
+  "seed": 2751937183, "seed_source": "urandom|--seed",
   "independence": "conforming|reduced-independence",
   "expected_spawns": 5, "expected_artifacts": ["PREMISE.md","POSITION.md","CLAIM_MAP.md","ATTACK.md","SYNTHESIS.md"] }
 ```

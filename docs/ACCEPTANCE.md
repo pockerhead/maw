@@ -79,6 +79,7 @@ Reviewed adversarially by Codex on 2026-07-28 (`.brainstorm/CODEX_REASON_V1_REVI
 | caller-position isolation (attacker sees it, others do not) | canary position with a distinctive marker, grep every artifact and every `SPAWNS.jsonl` `inputs` list | RED |
 | depth-1 guard refuses a nested chain | live nested invocation; guard is now the `maw/.reason-active` file, not an env var (Task tool has no env field) | RED |
 | coordinator re-derives the independence label instead of trusting it | pass 3 same-provider profiles labelled `conforming`, check the synthesis | RED |
+| seeded role assignment | two runs of one question with different seeds land opposite orientations; `--seed` reproduces one exactly; explicit `settings.agents.<stem>.provider` pins survive the draw | RED |
 | `--high-assurance` refuses a single-profile run | invoke with only one eligible profile | RED |
 | `fast` vs `deep` output quality | same question at both profiles, compared | RED |
 | cost range 200–350k | metrics from real runs | RED — figure is the concept review's derivation, not measured. An earlier revision published 120–250k on reasoning alone; retracted |

@@ -156,7 +156,7 @@ A third surface, beside task intake and task execution. It answers a **question*
 
 ```
 /maw-reason "should we shard this table or partition it?"
-/maw-reason --deep "..."             # raise compressor/attacker/synthesizer effort
+/maw-reason --fast "..."             # lower compressor/attacker/synthesizer effort
 /maw-reason --keep "..."             # persist the trace for audit
 /maw-reason --high-assurance "..."   # two generators on distinct profiles (+1 spawn)
 /maw-reason --seed 2751937183 "..."  # reproduce a previous run's role assignment
@@ -172,7 +172,9 @@ Output is a synthesis with an explicit **disagreement ledger** (unresolved confl
 
 That invariant is narrower than it sounds, and the skill says so: the caller still writes the fact allowlist and the constraints, and the coordinator routing `CALLER_POSITION.md` correctly is an instruction, not an enforcement. What the coordinator does record is the file list and prompt hash it fed each role, so a deviation is visible after the fact. Auditable exclusion, not a mechanical seal — a real seal needs a non-LLM dispatcher.
 
-**Two effort profiles.** `fast` (default) runs everything at `low` except a `medium` attacker; `--deep` raises compressor, attacker, and synthesizer. The split exists because "low is mechanical" is false for exactly two roles: the compressor decides what gets attacked and the synthesizer decides what the attack established. A `fast` run can miss a problem by never aiming at it, and no attacker effort recovers a target that was never selected — so for the high-stakes questions this skill is meant for, `--deep` is the honest default. Roughly 200–350k tokens either way (240–420k with `--high-assurance`); the synthesis prints which profile ran so a quiet attacker can be weighed correctly.
+**Two effort profiles.** `deep` (default) runs the compressor and synthesizer at `medium` and the attacker at `high`; `--fast` drops them for speed. The split exists because "low is mechanical" is false for exactly two roles: the compressor decides what gets attacked and the synthesizer decides what the attack established. A `fast` run can miss a problem by never aiming at it, and no attacker effort recovers a target that was never selected — so depth is the default and speed is the flag you type. Roughly 200–350k tokens (240–420k with `--high-assurance`); the synthesis prints which profile ran so a quiet attacker can be weighed correctly.
+
+**The premise check can stop the run.** A `QUESTION SUSPECT` verdict halts the chain after one spawn and hands the human the specific mis-posing plus a proposed reframing. The reframing is a proposal, never a substitution: proceed on the original question (`--force-premise`), restart with a reworded one, or drop it. Catching a badly posed question costs one spawn here and four downstream.
 
 ### The gate hook
 

@@ -47,6 +47,25 @@ Sequential, except the two generators under `--high-assurance`, which run in par
 
 **There is no `generator-b` role body.** The second generator runs the **same `agents/generator.md`** under a **different resolved profile**, and its dynamic block names `POSITION_B.md` as its artifact. If the profile table offers no second distinct profile, do not run the same one twice — abort `--high-assurance` with `CHAIN_FAILURE.md` class `profile`, because two papers from one profile are correlated and calling them independent is the exact claim the flag is supposed to earn.
 
+## The premise gate
+
+After `premise-check` returns, read its verdict line before spawning anything else.
+
+- `QUESTION WELL-POSED` → continue with the chain.
+- `QUESTION SUSPECT` → **stop here.** Write `HALTED.md` naming the verdict, the specific mis-posing, and the proposed reframing verbatim, then return. Do not spawn the generator. Do not reframe the question yourself and carry on — the reframing is a proposal for the human, and acting on it would be exactly the silent substitution the premise role is forbidden to make.
+
+This is not a failure: it is the premise check doing the job it was spawned for, at a cost of one spawn instead of five. The human decides what happens next — proceed on the original question, restart with a different one, or drop it.
+
+`HALTED.md` format:
+
+```
+Halt: premise-suspect
+Verdict: <the premise-check verdict line, verbatim>
+Mis-posing: <what specifically is wrong with the question as asked>
+Proposed reframing: <verbatim from PREMISE.md>
+Spawns completed: 1
+```
+
 ## Per-role execution
 
 For each role, in order:

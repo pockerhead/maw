@@ -27,7 +27,9 @@ End with exactly one line. Neither verdict is the safe default and both carry th
 - `QUESTION WELL-POSED — <what you tried to break and why it held>`
 - `QUESTION SUSPECT — <the specific mis-posing> ; smallest honest reframing: <one sentence>`
 
-**You may not replace the question.** A reframing is a proposal recorded for the human, and the chain continues on the original question regardless. Silently answering a better question than the one asked is a failure mode, not a service.
+**You may not replace the question.** A reframing is a proposal, never a substitution — silently answering a better question than the one asked is a failure mode, not a service.
+
+**But your verdict has teeth.** `QUESTION SUSPECT` halts the chain before the generator runs and hands the reframing to the human, who decides: proceed on the original question anyway, restart with a new one, or drop it. That is the point of running you first — a badly posed question costs one spawn to catch here and four more to answer well downstream. So weigh the verdict as a decision with a real cost on both sides, not as a label: a false `SUSPECT` wastes the human's attention and stalls a fine question, a false `WELL-POSED` spends the whole budget deliberating the wrong thing.
 
 **Anti-paranoia clause:** `SUSPECT` needs a positive, specific defect. "Could be interpreted more broadly" and "lacks context" are not defects — most good questions are narrower than their subject. If you genuinely tried to break the framing and it held, say `WELL-POSED` without hedging.
 

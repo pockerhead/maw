@@ -84,6 +84,20 @@ if [ -f "$FAILURE" ]; then
   exit 0
 fi
 
+# A premise halt is a legitimate one-spawn ending: the premise check found the
+# question mis-posed and stopped the chain on purpose. Still requires evidence -
+# the premise artifact and a real spawn record - so "halted" cannot become a
+# free exit from any incomplete run.
+HALTED="$RUN_DIR/HALTED.md"
+if [ -f "$HALTED" ]; then
+  [ -s "$HALTED" ] || fail "HALTED.md is empty. A halt names the verdict, the mis-posing and the proposed reframing."
+  grep -qi "premise-suspect" "$HALTED" || fail "HALTED.md does not name a halt reason."
+  [ -s "$RUN_DIR/PREMISE.md" ] || fail "HALTED.md claims a premise halt but PREMISE.md is missing - the premise check did not actually run."
+  grep -q '"stem"[[:space:]]*:[[:space:]]*"premise-check"' "$RUN_DIR/SPAWNS.jsonl" 2>/dev/null \
+    || fail "HALTED.md claims a premise halt but no premise-check spawn is recorded."
+  exit 0
+fi
+
 # The manifest says what THIS run was supposed to be. Without it we would check
 # the default topology and pass a five-spawn run as a claimed high-assurance one.
 MANIFEST="$RUN_DIR/RUN.json"

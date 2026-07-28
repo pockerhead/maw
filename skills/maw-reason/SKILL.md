@@ -3,7 +3,7 @@ name: maw-reason
 description: |
   Expensive, human-invoked adversarial deliberation over a QUESTION (not a task). Runs a five-role chain — premise check, generator, compressor, attacker, synthesizer — as real isolated spawns, and returns a synthesis with an explicit disagreement ledger and what-would-change-my-mind.
   Use when the cost of being wrong is high and genuine uncertainty exists: architecture forks, irreversible migrations, "should we X or Y" with real stakes. Do NOT use for lookups, trivia, or questions a single careful answer settles — it costs roughly 200-350k tokens and several minutes.
-  Supports flags: --deep (raise compressor/attacker/synthesizer effort; the honest default for high-stakes questions), --keep (persist the trace for audit), --passes N (extra attack passes, default 1), --high-assurance (dual independent generators on distinct profiles, +1 spawn), --seed N (reproduce a previous run's role assignment).
+  Supports flags: --fast (lower compressor/attacker/synthesizer effort for speed, at the cost of a thinner attack surface), --keep (persist the trace for audit), --passes N (extra attack passes, default 1), --high-assurance (dual independent generators on distinct profiles, +1 spawn), --seed N (reproduce a previous run's role assignment), --force-premise (run the full chain even if the premise check flags the question).
   Model-invocation is guarded: if the model reaches for this rather than the user typing it, the auto-invoke guard applies — the human sees the question, profile, and cost estimate and confirms before anything spawns.
 ---
 
@@ -61,7 +61,7 @@ Five spawns. The Compressor is not optional decoration: without a non-author dec
 
 Profiles resolve through the same machinery as `maw-execute-task` — `maw/settings.json` (schema v2), `providers`, `agents`, the capability catalog, and the Step 0.65-style preflight. Role names for `settings.agents.<name>` are the file stems: `premise-check`, `generator`, `compressor`, `attacker`, `synthesizer`, `coordinator`.
 
-There is no `task.md` here, so the per-task override layer of the pipeline does not exist. Resolution is: `settings.agents.<stem>` → `providers.<p>.default_*` → `default_provider` → host. The `--deep` flag sets effort **only where settings did not**: an explicit `settings.agents.attacker.effort` wins over the profile table, because an explicit value is a decision and a profile is a default.
+There is no `task.md` here, so the per-task override layer of the pipeline does not exist. Resolution is: `settings.agents.<stem>` → `providers.<p>.default_*` → `default_provider` → host. The profile sets effort **only where settings did not**: an explicit `settings.agents.attacker.effort` wins over the profile table, because an explicit value is a decision and a profile is a default.
 
 **Zero-config behaviour, stated plainly:** with `default_provider: "host"` every role resolves to claude, which is `reduced-independence` — and that now requires approval on every run. To get cross-provider deliberation, put a second provider in the pool:
 
@@ -88,17 +88,17 @@ With one provider there is nothing to draw: the run is `reduced-independence` an
 
 Latency compounds across five sequential spawns, so speed is a real axis — but not every role can be cheapened without changing what the chain *is*. Two named profiles, and the synthesis always prints which one ran:
 
-| Role | `fast` (default) | `deep` (`--deep`) |
+| Role | `deep` (default) | `fast` (`--fast`) |
 |---|---|---|
 | premise-check | low | low |
-| generator | low | medium |
-| compressor | low | **medium** |
-| attacker | **medium** | **high** |
-| synthesizer | low | **medium** |
+| generator | medium | low |
+| compressor | **medium** | low |
+| attacker | **high** | **medium** |
+| synthesizer | **medium** | low |
 
 **`fast` has a named weak link, and it is not the attacker.** The compressor decides which claims are load-bearing and what the attacker is pointed at; the synthesizer decides what the attack established. Those are adjudication tasks, not formatting — the compressor body itself calls the role "the first adversarial act". At `low` they are done thinly, which means a `fast` run can miss a problem by *never aiming at it*, and no amount of attacker effort recovers a target that was never selected.
 
-So read the two profiles as different products: `fast` is a quick adversarial sanity check, `deep` is the thing to use when the cost of being wrong is what motivated the question in the first place. When the question is the kind this skill's own description says to reach for, `--deep` is the honest default and `fast` is the shortcut you are choosing knowingly.
+So `deep` is the default, and `fast` is a shortcut taken knowingly. An earlier revision had this backwards: it argued in this very section that `--deep` was the honest default for the questions this skill is *for*, and then shipped `fast` as the default anyway. If latency matters more than depth for a particular question, that is a legitimate call — but it should be the one you have to type.
 
 Per-role `Effort:` in settings still overrides both profiles. Whatever runs, the synthesis prints it: a `low` attacker's silence is much weaker evidence than a `high` attacker's silence, and the reader cannot calibrate without knowing which happened.
 
@@ -195,6 +195,16 @@ Read your instructions from your own body. Do not ask the calling session for an
 **Do not include the question in this prompt.** The coordinator reads `QUESTION.md` itself. If you paste the question here you have re-opened the channel this whole design closes.
 
 The independence label in `RUN.json` is a **claim, not a fact**: the coordinator re-derives it from the profile table and overwrites it if it does not hold. You cannot label a same-provider run `conforming` and have it print that way.
+
+# Step 3.5 — The premise halt
+
+If the coordinator returns with `HALTED.md` instead of a synthesis, the premise check found the question itself mis-posed and stopped the chain after one spawn. Relay it to the human and ask which they want:
+
+1. **Proceed anyway** on the original question — re-launch with `--force-premise`; the chain skips the halt and runs all five roles. The synthesis carries the `QUESTION SUSPECT` verdict prominently, because an answer to a question somebody flagged as mis-posed needs to be read with that attached.
+2. **Restart** with a reworded question — a new run with a new `RUN.json` and a new seed. The reframing is a **proposal**: the human writes the new question, not you and not the premise role.
+3. **Drop it.**
+
+Do not pick for them, and do not quietly adopt the reframing — silently answering a better question than the one asked is the failure this whole gate exists to prevent. Delete `maw/.reason-active` before handing back; keep the run dir so the halt is auditable, and say where it is.
 
 # Step 4 — Relay
 

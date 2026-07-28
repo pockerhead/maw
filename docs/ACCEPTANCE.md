@@ -82,7 +82,9 @@ Reviewed adversarially by Codex on 2026-07-28 (`.brainstorm/CODEX_REASON_V1_REVI
 | coordinator re-derives the independence label instead of trusting it | pass 3 same-provider profiles labelled `conforming`, check the synthesis | RED |
 | seeded role assignment | two runs of one question with different seeds land opposite orientations; `--seed` reproduces one exactly; explicit `settings.agents.<stem>.provider` pins survive the draw | RED |
 | `--high-assurance` refuses a single-profile run | invoke with only one eligible profile | RED |
-| `fast` vs `deep` output quality | same question at both profiles, compared | RED |
+| `deep` (default) vs `--fast` output quality | same question at both profiles, compared | RED |
+| premise halt: `QUESTION SUSPECT` stops the chain after one spawn and reaches the human | live run on a deliberately mis-posed question | RED |
+| gate accepts a premise halt only with real evidence | 5 live cases: halt without PREMISE.md, without a spawn record, empty HALTED.md, legitimate halt, unrelated incomplete chain | GREEN (2026-07-28) |
 | cost range 200–350k | metrics from real runs | RED — figure is the concept review's derivation, not measured. An earlier revision published 120–250k on reasoning alone; retracted |
 
 ## State machine

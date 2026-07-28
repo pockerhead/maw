@@ -75,17 +75,28 @@ Reviewed adversarially by Codex on 2026-07-28 (`.brainstorm/CODEX_REASON_V1_REVI
 | skill install without jq | `--with-reason` on a machine with no jq | GREEN — jq was only ever needed for hook wiring; skill, role bodies, and subagents are plain copies |
 | gate hook wired into a real session and observed blocking a turn | live | GREEN (2026-07-28) — fired for real during the first chain launch, with the intended message |
 | gate hook must not block sessions that did not start the chain | live | **Defect found and fixed 2026-07-28.** A second session in the same repo could not end its turn while a chain ran in the first. `maw/.reason-active` now carries `session=$CLAUDE_CODE_SESSION_ID`; the hook enforces only for the owning session and fails open when the line is absent. Re-verified as silent for a non-owning session; owning-session enforcement RED until the next run |
-| chain E2E: five real spawns, artifacts pass their contracts | live `/maw-reason` run | RED |
-| self-referential first run ("how would you improve maw-reason") | live run, output reviewed | RED — planned as the first acceptance run |
-| caller-position isolation (attacker sees it, others do not) | canary position with a distinctive marker, grep every artifact and every `SPAWNS.jsonl` `inputs` list | RED |
-| depth-1 guard refuses a nested chain | live nested invocation; guard is now the `maw/.reason-active` file, not an env var (Task tool has no env field) | RED |
-| coordinator re-derives the independence label instead of trusting it | pass 3 same-provider profiles labelled `conforming`, check the synthesis | RED |
-| seeded role assignment | two runs of one question with different seeds land opposite orientations; `--seed` reproduces one exactly; explicit `settings.agents.<stem>.provider` pins survive the draw | RED |
+| chain E2E: real spawns, artifacts pass their contracts | live run `m9ADwC` (self-referential question, trace kept) | GREEN (2026-07-28) — 6 successful spawns (5 roles + one compressor retry), every artifact met its contract, gate passed silently at the end |
+| self-referential first run ("what is wrong with maw-reason") | live run, output reviewed | GREEN (2026-07-28) — produced findings absent from both the Codex review and the caller position, incl. an off-vector discovery that the installed `.claude/` copy had diverged from HEAD |
+| caller-position isolation (attacker sees it, others do not) | `SPAWNS.jsonl` `inputs` per role, plus phrase-level grep of every artifact | GREEN **with a caught violation** — final ledger shows `CALLER_POSITION.md` only in the attacker's inputs, and no caller phrasing leaked into other artifacts. But compressor attempt 1 self-reported reading `CALLER_POSITION.md`, `FACTS.md`, `CONSTRAINTS.md` outside its allowlist; the coordinator discarded that claim map and respawned the role. Isolation held **because it was policed**, not because it was enforced |
+| depth-1 guard refuses a nested chain | live nested invocation; guard is the `maw/.reason-active` file (Task tool has no env field) | RED |
+| coordinator re-derives the independence label instead of trusting it | live | GREEN (2026-07-28) — ledger records the derivation and its basis, not just the label |
+| seeded role assignment | live | GREEN (2026-07-28) — `seed 1477492483`, `mod 2 = 1`, generator→codex / compressor+attacker→claude, arithmetic recorded in the ledger. Opposite-orientation and `--seed` reproduction runs still RED |
 | `--high-assurance` refuses a single-profile run | invoke with only one eligible profile | RED |
 | `deep` (default) vs `--fast` output quality | same question at both profiles, compared | RED |
-| premise halt: `QUESTION SUSPECT` stops the chain after one spawn and reaches the human | live run on a deliberately mis-posed question | RED |
+| premise halt: `QUESTION SUSPECT` stops the chain | live run on a deliberately mis-posed question | RED — this run returned `WELL-POSED` (correctly, with cited reasoning), so the halt branch never executed |
 | gate accepts a premise halt only with real evidence | 5 live cases: halt without PREMISE.md, without a spawn record, empty HALTED.md, legitimate halt, unrelated incomplete chain | GREEN (2026-07-28) |
-| cost range 200–350k | metrics from real runs | RED — figure is the concept review's derivation, not measured. An earlier revision published 120–250k on reasoning alone; retracted |
+| cost range 200–350k | metrics from real runs | RED — **and blocked by a defect**: `usage` is `{}` on every ledger line, so nothing was measured. Rough reconstruction from artifact volume and input material puts run `m9ADwC` at 150–280k, consistent with the published range |
+
+### Defects found by the first live run (all open)
+
+| Defect | Evidence | Severity |
+|---|---|---|
+| `inputs` are recorded, never enforced against a per-role allowlist | compressor attempt 1 read three files outside its scope and was only caught because it said so | high — this is the chain's central claim |
+| requested effort does not reach the transport | synthesis: `attacker: medium requested (not enforced — ran at provider default)` | high — effort tuning is currently decorative for external spawns |
+| `usage` never populated | every ledger line has `usage: {}` | medium — makes cost claims unfalsifiable |
+| repo changes attributed to roles without proof, then reverted with `git checkout` | two `contract_violation` records blamed the generator for edits made by a human in another session; a third invented a plausible story about a role applying a patch from the run dir | high — destructive, and the reasoning was confidently wrong |
+| gate counts a `contract_violation` line as role presence | that line carries `"stem":"<role>"`, which satisfies the distinct-stem check | low — narrow the check to spawn-shaped records |
+| installed copy can lag HEAD silently | the chain's own attacker found `.claude/` running `fast` and lacking `HALTED.md` handling | fixed — `install.sh` now installs from the working copy when run inside a checkout |
 
 ## State machine
 

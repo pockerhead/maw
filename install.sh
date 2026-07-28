@@ -50,22 +50,43 @@ if [ $WITH_REASON -eq 1 ] && [ $INSTALL_CLAUDE -eq 0 ]; then
   WITH_HOOKS=0
 fi
 
+# Source selection. When this script sits in a MAW checkout, install from the
+# working copy: raw.githubusercontent.com serves a CDN-cached copy that can lag
+# a push by minutes, which silently installs the previous commit. Observed live -
+# a chain ran against a SKILL.md one commit behind the one just pushed, and its
+# own attacker found the divergence as an off-vector finding.
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd || echo .)
+SOURCE_MODE=remote
+if [ "${FORCE_REMOTE:-0}" != "1" ] && [ -f "$SCRIPT_DIR/skills/maw-execute-task/SKILL.md" ]; then
+  SOURCE_MODE=local
+  echo "Installing from the working copy at $SCRIPT_DIR (set FORCE_REMOTE=1 to fetch from GitHub)."
+fi
+
 # Download everything first (atomic-ish: no partial surface on a failed fetch).
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
+# fetch <repo-relative-path> <destination>
+fetch() {
+  if [ "$SOURCE_MODE" = local ]; then
+    cp "$SCRIPT_DIR/$1" "$2"
+  else
+    curl -fsSL "$REPO/$1" -o "$2"
+  fi
+}
+
 for s in $SKILLS; do
-  curl -fsSL "$REPO/skills/$s/SKILL.md" -o "$TMP/$s.SKILL.md"
+  fetch "skills/$s/SKILL.md" "$TMP/$s.SKILL.md"
 done
 for a in $AGENTS; do
-  curl -fsSL "$REPO/skills/maw-execute-task/agents/$a.md" -o "$TMP/agent-$a.md"
+  fetch "skills/maw-execute-task/agents/$a.md" "$TMP/agent-$a.md"
 done
 if [ $WITH_REASON -eq 1 ]; then
-  curl -fsSL "$REPO/skills/$REASON_SKILL/SKILL.md" -o "$TMP/$REASON_SKILL.SKILL.md"
+  fetch "skills/$REASON_SKILL/SKILL.md" "$TMP/$REASON_SKILL.SKILL.md"
   for a in $REASON_AGENTS; do
-    curl -fsSL "$REPO/skills/$REASON_SKILL/agents/$a.md" -o "$TMP/reason-agent-$a.md"
+    fetch "skills/$REASON_SKILL/agents/$a.md" "$TMP/reason-agent-$a.md"
   done
-  [ $WITH_HOOKS -eq 1 ] && curl -fsSL "$REPO/hooks/maw-reason-gate.sh" -o "$TMP/maw-reason-gate.sh"
+  [ $WITH_HOOKS -eq 1 ] && fetch "hooks/maw-reason-gate.sh" "$TMP/maw-reason-gate.sh"
 fi
 
 install_surface() {

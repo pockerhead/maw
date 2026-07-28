@@ -43,7 +43,9 @@ For each role, in order:
 1. **Assemble the prompt**: the raw role body from `{SKILL_DIR}/agents/<stem>.md`, then a blank line, then the dynamic block below. Never paraphrase a role body; concatenate it.
 2. **Spawn it** through the external runner contract (private temp dir, prompt on stdin, isolation flags, absolute paths, cwd inside the repo root). Use the profile resolved for that stem.
 
-   **`--add-dir "{RUN_DIR_ABS}"` is mandatory on every role spawn.** The run dir lives outside the repo, and `claude -p` under `--permission-mode acceptEdits` authorizes writes in cwd and additional directories only. Without this grant every role fails with "I don't have permission to write outside the project directory" — verified live, and it fails *after* the spawn has burned its tokens. This is the single most common way to break this chain.
+   **`--add-dir "{RUN_DIR_ABS}"` is mandatory on every role spawn, on both providers.** The run dir lives outside the repo, and the workspace grant does not reach it by default. `claude -p` under `--permission-mode acceptEdits` authorizes writes in cwd and additional directories only, and fails with "I don't have permission to write outside the project directory" (verified live) — *after* the spawn has burned its tokens. `codex exec` refuses out-of-workspace writes the same way ("Unable to write outside the permitted workspace") and takes the same `--add-dir` flag. This is the single most common way to break this chain.
+
+   For a codex role, use the runner formula from `maw-execute-task` verbatim — private `CODEX_HOME` holding only `auth.json`, `-c project_doc_max_bytes=0`, `--ignore-user-config`, and `-c windows.sandbox="unelevated"` on Windows — plus the `--add-dir` above. Do not improvise a shorter invocation: each of those flags is there because dropping it broke something that was verified live.
 
 3. **Validate** the artifact against its contract (existence, freshness relative to `QUESTION.md`, required strings). Fresh means created by this spawn: if the artifact already exists from an earlier attempt, rename it to `<name>.prev-<n>.md` before spawning.
 4. **Record** a ledger line in `SPAWNS.jsonl`:

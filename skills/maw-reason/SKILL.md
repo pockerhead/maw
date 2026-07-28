@@ -38,7 +38,7 @@ So the invariant is "the opinionated caller does not write the chain's prompts",
 
 ## Scope of v1
 
-- **Host:** Claude Code only. The Codex surface is not installed for this skill yet — the chain leans on `claude -p` external spawns whose flags and isolation are verified on this host.
+- **Host:** Claude Code only — this skill is not installed on the `.agents/` surface, so the orchestrating session is always Claude Code. **Roles are not** restricted that way: any role can resolve to `codex` and run through `codex exec`, which is how a conforming independence profile is reached at all. Host and role providers are different questions; only the first is pinned in v1.
 - **Depth:** exactly 1, enforced two ways. Role spawns run with `--setting-sources ""`, so they load no project settings and therefore no skills — a role **cannot** invoke this skill even if it decides to. The coordinator can (it keeps the `Skill` tool), so it is stopped by the file marker in Step 1 instead. Note that a subagent never has the Task tool at all — Claude Code strips `Agent` from every subagent — which is why the chain runs through the external runner rather than nested subagents.
 - **No code changes.** No role may edit a file in the repo. Roles read the repo and write exactly one artifact each into the run directory.
 
@@ -60,6 +60,17 @@ Five spawns. The Compressor is not optional decoration: without a non-author dec
 ## Profiles and effort
 
 Profiles resolve through the same machinery as `maw-execute-task` — `maw/settings.json` (schema v2), `providers`, `agents`, the capability catalog, and the Step 0.65-style preflight. Role names for `settings.agents.<name>` are the file stems: `premise-check`, `generator`, `compressor`, `attacker`, `synthesizer`, `coordinator`.
+
+There is no `task.md` here, so the per-task override layer of the pipeline does not exist. Resolution is: `settings.agents.<stem>` → `providers.<p>.default_*` → `default_provider` → host. The `--deep` flag sets effort **only where settings did not**: an explicit `settings.agents.attacker.effort` wins over the profile table, because an explicit value is a decision and a profile is a default.
+
+**Zero-config behaviour, stated plainly:** with `default_provider: "host"` every role resolves to claude, which is `reduced-independence` — and that now requires approval on every run. If you intend cross-provider deliberation, say so once in settings:
+
+```json
+{ "default_provider": "host",
+  "agents": { "generator": { "provider": "codex", "model": "gpt-5.6-sol" } } }
+```
+
+That is the minimum edit that makes a run `conforming`: the generator's provider differs from the compressor's and attacker's, and the three profiles are distinct. Putting the *attacker* on the second provider instead is also defensible and arguably better — it is the role whose independent prior does the most work — but then generator and compressor share a harness, so the compressor is judging a same-harness paper. Pick deliberately; the coordinator will report whichever you actually got.
 
 ### Two effort profiles
 

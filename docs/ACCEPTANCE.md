@@ -46,7 +46,8 @@ Honest status ledger. GREEN = executed on this machine (Windows 11, codex-cli 0.
 |---|---|---|
 | sh -n install.sh | syntax pass | GREEN |
 | layout matches SKILL.md expectations (agents/<stem>.md beside SKILL.md) | reviewed statically by Codex | GREEN |
-| counts (3 skills, 9 bodies, 45 variants) | static check | GREEN |
+| counts (3 shared skills + maw-reason on claude, 9 + 6 bodies, 75 variants) | static check | GREEN (2026-07-28) |
+| `--with-hooks` arg parsing (multi-flag loop, ignored without --claude, unknown flag) | live installer invocations | GREEN (2026-07-28) |
 | idempotent re-run, fetch-failure rollback, interruption | live installer runs in a scratch repo | RED |
 | `.agents/skills` discovery by installed codex | install into a test repo, invoke skill | GREEN (live: TASK-004 — codex host read and executed both maw-tasks and maw-execute-task skills) |
 | shared SKILL.md frontmatter loads in both harnesses | same test repo | GREEN (live: same files driven by both hosts across TASK-001..004) |
@@ -55,6 +56,32 @@ Honest status ledger. GREEN = executed on this machine (Windows 11, codex-cli 0.
 | sandboxed-Codex-host auth wall documented | live observation | GREEN (contract: sandbox-off hosting requirement on Windows). The "nested codex read-only degradation" half of this row is **RETRACTED 2026-07-28** — see the write-refusal cause matrix; the credential finding is unaffected |
 | Codex-hosted E2E re-run under the corrected invocation (writing stages on codex) | live run of a mode that reaches implementer/fixer | RED — TASK-004 predates the fix and ran single-artifact stages only |
 | install.ps1 twin | not shipped (documented: use Git Bash) | DEFERRED by decision |
+
+## maw-reason (experimental, Claude Code only)
+
+Reviewed adversarially by Codex on 2026-07-28 (`.brainstorm/CODEX_REASON_V1_REVIEW.md`): verdict NO-GO, 1 blocker + 17 major. The blocker and every gate/consistency finding are fixed below; the trust-boundary findings were resolved by narrowing the claim rather than by new enforcement.
+
+| Row | How | Status |
+|---|---|---|
+| **B1** external role writes to an out-of-repo run dir | live `claude -p`, `acceptEdits`, cwd at repo, target in temp | GREEN (2026-07-28) — refused without `--add-dir` ("I don't have permission to write outside the project directory"), writes with it. `--add-dir "$RUN_DIR"` is now mandatory on every role spawn, and the preflight canary writes into the run dir instead of the workspace |
+| subagent can spawn external CLIs | docs + Codex cross-check | GREEN — `Bash` survives both subagent tool filters; `Agent` does not, so nested subagents are impossible and the external runner is the only path (this is why the design uses it) |
+| gate hook branch coverage | 14 live invocations incl. forged ledger, duplicate stems, empty CHAIN_FAILURE, equal mtimes, manifest mismatch, unset CLAUDE_PROJECT_DIR | GREEN (2026-07-28) |
+| gate: forged-ledger resistance | 5 lines containing `"stem"` only; 5 duplicate stems | GREEN — both blocked; a record now needs stem + `exit:0` + `fresh:true`, and all five distinct stems must appear |
+| gate: topology awareness | manifest claiming 6 spawns against a 5-spawn ledger | GREEN — blocked; gate reads `RUN.json` rather than assuming the default |
+| gate: no permanent bypass | `.gate-cleared` removed; enforcement keyed to `maw/.reason-active` | GREEN — a finished run is silent, a stale pointer from an old session no longer blocks |
+| gate blocks via exit 2 + stderr, not JSON | Windows run paths contain backslashes; sh-side JSON escaping broke on them (observed) | GREEN (2026-07-28) |
+| gate hook auto-wiring into settings.json, **without jq** | 4 live cases: no settings file, rerun, existing file with an unrelated Stop hook, rerun on existing | GREEN (2026-07-28) — cascade is write-whole-file → already-wired → jq → Python; other keys preserved, idempotent (no duplicate entries) |
+| same wiring via the `jq` branch | — | RED — unverified, `jq` is absent on this machine; the Python branch covers it here |
+| skill install without jq | `--with-reason` on a machine with no jq | GREEN — jq was only ever needed for hook wiring; skill, role bodies, and subagents are plain copies |
+| gate hook wired into a real session and observed blocking a turn | add to settings.json, force an incomplete run | RED |
+| chain E2E: five real spawns, artifacts pass their contracts | live `/maw-reason` run | RED |
+| self-referential first run ("how would you improve maw-reason") | live run, output reviewed | RED — planned as the first acceptance run |
+| caller-position isolation (attacker sees it, others do not) | canary position with a distinctive marker, grep every artifact and every `SPAWNS.jsonl` `inputs` list | RED |
+| depth-1 guard refuses a nested chain | live nested invocation; guard is now the `maw/.reason-active` file, not an env var (Task tool has no env field) | RED |
+| coordinator re-derives the independence label instead of trusting it | pass 3 same-provider profiles labelled `conforming`, check the synthesis | RED |
+| `--high-assurance` refuses a single-profile run | invoke with only one eligible profile | RED |
+| `fast` vs `deep` output quality | same question at both profiles, compared | RED |
+| cost range 200–350k | metrics from real runs | RED — figure is the concept review's derivation, not measured. An earlier revision published 120–250k on reasoning alone; retracted |
 
 ## State machine
 

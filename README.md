@@ -73,10 +73,10 @@ Branch: bugfix/fix-profile-404
 curl -fsSL https://raw.githubusercontent.com/pockerhead/maw/main/install.sh | sh
 ```
 
-With no flags the installer detects which harnesses are present (`claude`, `codex`) and installs a surface for each. Explicit targets: `sh install.sh --claude`, `--codex`, or `--all`. On Windows run it through Git Bash (`sh install.sh`); a native `install.ps1` twin is planned but not shipped yet.
+With no flags the installer detects which harnesses are present (`claude`, `codex`) and installs a surface for each. Explicit targets: `sh install.sh --claude`, `--codex`, or `--all`; add `--with-reason` for the experimental deliberation surface and `--with-hooks` for its gate. On Windows run it through Git Bash (`sh install.sh`); a native `install.ps1` twin is planned but not shipped yet.
 
-- **Claude Code surface**: `.claude/skills/{maw-execute-task,maw-tasks,maw-context}/` (+ raw agent bodies) and 45 named subagents in `.claude/agents/`.
-- **Codex CLI surface**: `.agents/skills/{maw-execute-task,maw-tasks,maw-context}/` (+ raw agent bodies) — repository-scoped skills, committable, so teammates on the other harness get a working install from git without re-running the installer.
+- **Claude Code surface**: `.claude/skills/{maw-execute-task,maw-tasks,maw-context}/` (+ raw agent bodies) and 45 named subagents in `.claude/agents/`; `--with-reason` adds the `maw-reason` skill, 6 role bodies, and 30 more subagents.
+- **Codex CLI surface**: `.agents/skills/{maw-execute-task,maw-tasks,maw-context}/` (+ raw agent bodies) — repository-scoped skills, committable, so teammates on the other harness get a working install from git without re-running the installer. `maw-reason` is Claude-only in v1.
 
 For Claude Code, add to your project's `CLAUDE.md`:
 
@@ -149,6 +149,33 @@ maw/tasks/done/TASK-001/
 **deep-research:** task.md + TASK_FINAL.md (orchestrator-written copy of task.md) + PREMISE_CHALLENGE.md + PLAN.md (research report) + PLAN_V2.md + PLAN_FINAL.md + metrics.md
 
 Plus `PCTX_PROPOSALS.md` in any task where an agent proposed a project-context change (see below).
+
+## Adversarial deliberation — `/maw-reason` (experimental, Claude Code only)
+
+A third surface, beside task intake and task execution. It answers a **question** instead of running a work item: no task folder, no branch, no worktree, no status moves. Opt-in at install (`--with-reason`) because **no chain has yet been run end to end** — see the `maw-reason` rows in `docs/ACCEPTANCE.md` for what is unverified.
+
+```
+/maw-reason "should we shard this table or partition it?"
+/maw-reason --deep "..."             # raise compressor/attacker/synthesizer effort
+/maw-reason --keep "..."             # persist the trace for audit
+/maw-reason --high-assurance "..."   # two generators on distinct profiles (+1 spawn)
+```
+
+Five spawns: **premise check → generator → compressor → attacker → synthesizer**. The compressor is what makes it a dialectic rather than an ensemble — a non-author decides which claims are load-bearing and proposes the `attack_vector`, so the attacker cannot pick its own exemption surface. The vector is a floor: an off-vector scan is mandatory.
+
+Output is a synthesis with an explicit **disagreement ledger** (unresolved conflicts stay unresolved), stated confidence tied to what survived attack, and concrete what-would-change-my-mind triggers.
+
+**The calling session does not author the chain's prompts.** It captures the question verbatim, then spawns a coordinator that cannot see the calling conversation and builds every downstream prompt itself. Your own tentative answer goes into a `CALLER_POSITION.md` that reaches the **attacker only** — not to protect it, but so it gets attacked like everything else.
+
+That invariant is narrower than it sounds, and the skill says so: the caller still writes the fact allowlist and the constraints, and the coordinator routing `CALLER_POSITION.md` correctly is an instruction, not an enforcement. What the coordinator does record is the file list and prompt hash it fed each role, so a deviation is visible after the fact. Auditable exclusion, not a mechanical seal — a real seal needs a non-LLM dispatcher.
+
+**Two effort profiles.** `fast` (default) runs everything at `low` except a `medium` attacker; `--deep` raises compressor, attacker, and synthesizer. The split exists because "low is mechanical" is false for exactly two roles: the compressor decides what gets attacked and the synthesizer decides what the attack established. A `fast` run can miss a problem by never aiming at it, and no attacker effort recovers a target that was never selected — so for the high-stakes questions this skill is meant for, `--deep` is the honest default. Roughly 200–350k tokens either way (240–420k with `--high-assurance`); the synthesis prints which profile ran so a quiet attacker can be weighed correctly.
+
+### The gate hook
+
+A simulated chain and a real one look identical in their output text — that is what makes this surface different from the task pipeline, where a missing implementation is visible in the diff. `install.sh --claude --with-hooks` adds a `Stop` hook that blocks the turn unless the run's own manifest is satisfied: every expected artifact present and newer than the question, and a ledger with the expected number of distinct successful role spawns. It reads `RUN.json`, so a five-spawn run cannot pass as a claimed `--high-assurance` one.
+
+The hook raises the cost of faking a chain from "write some prose" to "fabricate a consistent evidence set on purpose". A model that can write files can still forge all of it. It is not a security boundary, and describing it as one would be the same overclaim the chain exists to catch — what it does is turn an accidental shortcut into a deliberate lie.
 
 ## Project context overlay
 

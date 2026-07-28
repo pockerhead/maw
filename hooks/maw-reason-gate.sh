@@ -169,10 +169,18 @@ for line in open(path, encoding="utf-8", errors="replace"):
     if isinstance(u, dict):
         i, o = u.get("input_tokens"), u.get("output_tokens")
         c, r = u.get("cached_input_tokens"), u.get("reasoning_output_tokens")
+        for name, v in (("input_tokens", i), ("output_tokens", o),
+                        ("cached_input_tokens", c), ("reasoning_output_tokens", r)):
+            if v is not None and (not isinstance(v, int) or isinstance(v, bool) or v < 0):
+                print(f"USAGE_ARITHMETIC {stem}: {name} is {v!r}, not a non-negative integer")
+                sys.exit(3)
         if isinstance(i, int) and isinstance(c, int) and c > i:
             print(f"USAGE_ARITHMETIC {stem}: cached_input {c} > input {i}"); sys.exit(3)
         if isinstance(o, int) and isinstance(r, int) and r > o:
             print(f"USAGE_ARITHMETIC {stem}: reasoning_output {r} > output {o}"); sys.exit(3)
+        # This catches impossible numbers. It cannot catch plausible invented
+        # ones - the coordinator both spawns the role and writes this record,
+        # so provenance is unprovable without a non-LLM runner.
 missing = sorted(required - stems)
 if malformed:
     print(f"MALFORMED {malformed}"); sys.exit(4)

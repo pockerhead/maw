@@ -92,10 +92,11 @@ Reviewed adversarially by Codex on 2026-07-28 (`.brainstorm/CODEX_REASON_V1_REVI
 | Defect | Evidence | Severity |
 |---|---|---|
 | `inputs` are recorded, never enforced against a per-role allowlist | compressor attempt 1 read three files outside its scope and was only caught because it said so | high — this is the chain's central claim |
-| requested effort does not reach the transport | synthesis: `attacker: medium requested (not enforced — ran at provider default)` | high — effort tuning is currently decorative for external spawns |
-| `usage` never populated | every ledger line has `usage: {}` | medium — makes cost claims unfalsifiable |
-| repo changes attributed to roles without proof, then reverted with `git checkout` | two `contract_violation` records blamed the generator for edits made by a human in another session; a third invented a plausible story about a role applying a patch from the run dir | high — destructive, and the reasoning was confidently wrong |
-| gate counts a `contract_violation` line as role presence | that line carries `"stem":"<role>"`, which satisfies the distinct-stem check | low — narrow the check to spawn-shaped records |
+| ~~requested effort does not reach the transport~~ | measured 2026-07-28: claude `low`=218 vs `max`=1034 output tokens; codex rejects an invalid effort value, so the key is parsed | **RETRACTED** — the run's synthesis inferred this without transport visibility. Effort is applied. Replaced by the row below |
+| codex effort is flat across low→high | measured: `gpt-5.6-sol` reasoning tokens 510 (low) / 516 (high) / 1552 (xhigh), single sample each | medium — `fast` vs `deep` barely moves a codex role; documented, needs `xhigh` to bite |
+| `usage` never populated | every ledger line has `usage: {}` | **fixed 2026-07-28** — coordinator must parse provider usage and write `{"parse_failed":true}` rather than `{}` |
+| repo changes attributed to roles without proof, then reverted with `git checkout` | two `contract_violation` records blamed the generator for edits made by a human in another session; a third invented a plausible story about a role applying a patch from the run dir | **fixed 2026-07-28** — coordinator is now absolutely forbidden from modifying the working tree, including to "restore" it; unattributed diffs are logged as `observation`, remediation is a human's call |
+| gate counts a `contract_violation` line as role presence | that line carries `"stem":"<role>"`, which satisfied the distinct-stem check | **fixed 2026-07-28** — distinct-stem check now runs only over records with `exit:0` and `fresh:true`; verified live that a role named solely in an incident record is blocked |
 | installed copy can lag HEAD silently | the chain's own attacker found `.claude/` running `fast` and lacking `HALTED.md` handling | fixed — `install.sh` now installs from the working copy when run inside a checkout |
 
 ## State machine

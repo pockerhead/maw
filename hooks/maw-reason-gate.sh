@@ -136,11 +136,17 @@ if [ "$OK_LINES" -lt "$EXPECTED_SPAWNS" ]; then
   fail "only $OK_LINES successful spawn record(s); this run's manifest expects $EXPECTED_SPAWNS. A record needs a stem, exit 0 and fresh:true."
 fi
 
-# Distinct stems: five duplicate generator records are not a chain.
-DISTINCT=$(sed -n 's/.*"stem"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$LEDGER" | sort -u | wc -l | tr -d ' ')
+# Distinct stems, counted only over spawn-shaped records. Non-spawn events
+# (assignment, observation, contract_violation) also carry a "stem" field, so a
+# bare stem match would let a role that never ran satisfy this check purely by
+# being named in an incident record - observed in the first live run's ledger.
+SPAWN_LINES="$RUN_DIR/.gate-spawn-lines"
+grep '"exit"[[:space:]]*:[[:space:]]*0' "$LEDGER" | grep '"fresh"[[:space:]]*:[[:space:]]*true' > "$SPAWN_LINES" 2>/dev/null || true
+DISTINCT=$(sed -n 's/.*"stem"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SPAWN_LINES" | sort -u | wc -l | tr -d ' ')
 for required in premise-check generator compressor attacker synthesizer; do
-  grep -q "\"stem\"[[:space:]]*:[[:space:]]*\"$required\"" "$LEDGER" \
-    || fail "no spawn recorded for role '$required' ($DISTINCT distinct stems in the ledger). Every role in the chain must have run."
+  grep -q "\"stem\"[[:space:]]*:[[:space:]]*\"$required\"" "$SPAWN_LINES" \
+    || { rm -f "$SPAWN_LINES"; fail "no successful spawn recorded for role '$required' ($DISTINCT distinct stems among completed spawns). Being named in an incident record does not count as having run."; }
 done
+rm -f "$SPAWN_LINES"
 
 exit 0

@@ -102,6 +102,17 @@ So `deep` is the default, and `fast` is a shortcut taken knowingly. An earlier r
 
 Per-role `Effort:` in settings still overrides both profiles. Whatever runs, the synthesis prints it: a `low` attacker's silence is much weaker evidence than a `high` attacker's silence, and the reader cannot calibrate without knowing which happened.
 
+**The two providers do not respond to effort the same way** (measured 2026-07-28 on one reasoning-heavy task, single sample per level):
+
+| | low | high | xhigh | max |
+|---|---|---|---|---|
+| claude `sonnet`, output tokens | 218 | — | — | 1034 |
+| codex `gpt-5.6-sol`, reasoning tokens | 510 | 516 | 1552 | — |
+
+Effort reaches both transports — the flags are applied, and codex rejects an invalid value outright, so it is parsed rather than ignored. But on `gpt-5.6-sol` the low→high band is essentially flat, and the jump happens at `xhigh`. Consequence: **the `fast`/`deep` split barely moves a codex role**, because both profiles live inside that flat band. If a codex role is the one you need to think harder, `deep` is not enough — set its effort to `xhigh` explicitly in settings.
+
+This also retires a claim from the first live run: its synthesis reported `attacker: medium requested (not enforced — ran at provider default)`. That was inference, not observation — the synthesizer has no view of the transport. Measurement contradicts it.
+
 **Independence.** A conforming run puts the Generator on a different provider than the Compressor/Attacker, with all three execution profiles distinct. The coordinator **verifies** this against the resolved profile table rather than trusting the label it was handed — a caller that passes three same-provider profiles and the word `conforming` must not get a conforming claim in the output.
 
 When only one provider is available the run is a named **`reduced-independence`** profile, and that downgrade needs **explicit human approval before the first spawn** — invoking the command authorizes a deliberation, not a topology the user has not been shown. Declined, the run stops. Approved, the synthesis says so prominently and makes no cross-provider claim. Never substitute silently.

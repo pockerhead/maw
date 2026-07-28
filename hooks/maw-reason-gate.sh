@@ -63,6 +63,21 @@ fi
 QUESTION="$RUN_DIR/QUESTION.md"
 [ -f "$QUESTION" ] || exit 0
 
+# A chain in progress is not a chain being faked. The coordinator may run in the
+# background while its caller keeps working, and blocking every turn until the
+# last artifact lands makes the owning session unusable for the whole run -
+# observed live with a backgrounded coordinator: the caller could not answer its
+# human, or do anything else, while the chain was legitimately working.
+# Distinguish "running" from "abandoned" by whether the run directory is still
+# changing: if anything in it was touched within the idle window, let the turn
+# end and check again next time.
+IDLE_SECONDS="${MAW_REASON_IDLE_SECONDS:-420}"
+NEWEST=$(find "$RUN_DIR" -type f -newermt "-${IDLE_SECONDS} seconds" -print -quit 2>/dev/null || true)
+if [ -n "$NEWEST" ]; then
+  echo "maw-reason gate: run $RUN_DIR is still progressing (activity within ${IDLE_SECONDS}s); not enforcing this turn." >&2
+  exit 0
+fi
+
 fail() {
   echo "maw-reason gate: $1" >&2
   echo "Run dir: $RUN_DIR" >&2

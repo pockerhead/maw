@@ -59,7 +59,7 @@ Sequential, except the two generators under `--high-assurance`, which run in par
 After `premise-check` returns, read its verdict line before spawning anything else.
 
 - `QUESTION WELL-POSED` → continue with the chain.
-- `QUESTION SUSPECT` → **stop here.** Write `HALTED.md` naming the verdict, the specific mis-posing, and the proposed reframing verbatim, then return. Do not spawn the generator. Do not reframe the question yourself and carry on — the reframing is a proposal for the human, and acting on it would be exactly the silent substitution the premise role is forbidden to make.
+- `QUESTION SUSPECT` → **stop here.** Write `HALTED.md` **as a file in the run dir** — a `{"event":"halt"}` line in the ledger is not a substitute and does not satisfy the gate, which looks for the file (observed live: the first halt wrote the ledger event and skipped the file). Name the verdict, the specific mis-posing, and the proposed reframing verbatim, then return. Do not spawn the generator. Do not reframe the question yourself and carry on — the reframing is a proposal for the human, and acting on it would be exactly the silent substitution the premise role is forbidden to make.
 
 This is not a failure: it is the premise check doing the job it was spawned for, at a cost of one spawn instead of five. The human decides what happens next — proceed on the original question, restart with a different one, or drop it.
 

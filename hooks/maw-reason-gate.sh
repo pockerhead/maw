@@ -42,7 +42,23 @@ RUN_DIR=$(head -n 1 "$POINTER" 2>/dev/null || true)
 
 # Only an active run is enforceable. The caller deletes this marker on every
 # exit path, so its absence means the run is finished or was cleaned up.
-[ -f "$PROJECT_DIR/maw/.reason-active" ] || exit 0
+ACTIVE="$PROJECT_DIR/maw/.reason-active"
+[ -f "$ACTIVE" ] || exit 0
+
+# The marker is project-wide but the obligation is not: only the session that
+# started the chain must finish it. Without this check the gate blocks every
+# other Claude Code session working in the same repo - observed live, in a
+# session that had nothing to do with the run.
+OWNER=$(sed -n 's/^session=//p' "$ACTIVE" 2>/dev/null | head -n 1)
+MY_SESSION="${CLAUDE_CODE_SESSION_ID:-}"
+if [ -n "$OWNER" ]; then
+  [ "$OWNER" = "$MY_SESSION" ] || exit 0    # someone else's run; not our turn to gate
+else
+  # Pre-session-tagging marker, or a caller that did not record ownership.
+  # Fail open: blocking an uninvolved session is worse than missing one gate.
+  echo "maw-reason gate: run marker has no session= line; not enforcing." >&2
+  exit 0
+fi
 
 QUESTION="$RUN_DIR/QUESTION.md"
 [ -f "$QUESTION" ] || exit 0

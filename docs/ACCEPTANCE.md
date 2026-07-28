@@ -73,7 +73,8 @@ Reviewed adversarially by Codex on 2026-07-28 (`.brainstorm/CODEX_REASON_V1_REVI
 | gate hook auto-wiring into settings.json, **without jq** | 4 live cases: no settings file, rerun, existing file with an unrelated Stop hook, rerun on existing | GREEN (2026-07-28) — cascade is write-whole-file → already-wired → jq → Python; other keys preserved, idempotent (no duplicate entries) |
 | same wiring via the `jq` branch | — | RED — unverified, `jq` is absent on this machine; the Python branch covers it here |
 | skill install without jq | `--with-reason` on a machine with no jq | GREEN — jq was only ever needed for hook wiring; skill, role bodies, and subagents are plain copies |
-| gate hook wired into a real session and observed blocking a turn | add to settings.json, force an incomplete run | RED |
+| gate hook wired into a real session and observed blocking a turn | live | GREEN (2026-07-28) — fired for real during the first chain launch, with the intended message |
+| gate hook must not block sessions that did not start the chain | live | **Defect found and fixed 2026-07-28.** A second session in the same repo could not end its turn while a chain ran in the first. `maw/.reason-active` now carries `session=$CLAUDE_CODE_SESSION_ID`; the hook enforces only for the owning session and fails open when the line is absent. Re-verified as silent for a non-owning session; owning-session enforcement RED until the next run |
 | chain E2E: five real spawns, artifacts pass their contracts | live `/maw-reason` run | RED |
 | self-referential first run ("how would you improve maw-reason") | live run, output reviewed | RED — planned as the first acceptance run |
 | caller-position isolation (attacker sees it, others do not) | canary position with a distinctive marker, grep every artifact and every `SPAWNS.jsonl` `inputs` list | RED |

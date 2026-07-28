@@ -135,7 +135,16 @@ Create the run directory. Default location is a private temp dir — operational
 
 Write a pointer at `maw/.reason-last-run` containing the absolute run path (one line). This is what the optional gate hook reads; add it to `.gitignore` if `maw/` is tracked.
 
-**Depth guard — check before writing anything.** If `maw/.reason-active` already exists, a chain is already running and you are a nested invocation: stop and report, do not create a run dir. Otherwise write `maw/.reason-active` containing the run ID, and delete it in Step 4 or Step 5 on every exit path including failure. A stale marker from a crashed run blocks the surface until removed, which is the safe direction — tell the user the file and the run it names rather than silently deleting it yourself.
+**Depth guard — check before writing anything.** If `maw/.reason-active` already exists, a chain is already running and you are a nested invocation: stop and report, do not create a run dir. Otherwise write the marker, and delete it in Step 4 or Step 5 on every exit path including failure. A stale marker from a crashed run blocks the surface until removed, which is the safe direction — tell the user the file and the run it names rather than silently deleting it yourself.
+
+The marker carries **two** lines, and the second one matters more than it looks:
+
+```
+maw-reason-<id>
+session=<the value of $CLAUDE_CODE_SESSION_ID>
+```
+
+The obligation to finish a chain belongs to the session that started it, but the marker file is project-wide. Without the `session=` line the gate hook blocks the turn of **every** Claude Code session working in that repo — observed live: a second session, doing unrelated work in the same project, could not end its turn because a chain was running in the first one. The hook fails open when the line is absent, so omitting it silently disables enforcement rather than breaking other people's sessions.
 
 Then write these files. **Verbatim means verbatim** — you are a scribe here, not an editor:
 

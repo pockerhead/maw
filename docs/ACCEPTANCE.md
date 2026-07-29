@@ -31,7 +31,7 @@ Honest status ledger. GREEN = executed on this machine (Windows 11, codex-cli 0.
 | codex writes on Windows through the corrected invocation (implementer/fixer viable) | `workspace-write` spawn, private home, `-c windows.sandbox="unelevated"`, in-workspace target | GREEN (2026-07-28) — both `unelevated` and `elevated` write successfully |
 | per-role capability profiles (review-only / implement / research / QA) under real parent sandbox | prototype spawns per role class | RED |
 | timeout kill + cleanup on success/failure/timeout/cancel | forced-timeout test | RED |
-| PowerShell stdin/CRLF/UTF-8 through both pipes | canary with non-ASCII content | RED |
+| PowerShell stdin/CRLF/UTF-8 through both pipes | canary with non-ASCII content | RED for PowerShell specifically, but the **Git Bash case is now measured**: shell redirection encodes the prompt in the console codepage (cp1251 here) and corrupts non-ASCII before the spawn. `codex exec` rejects it (`input is not valid UTF-8, invalid byte at offset N`); `claude -p` accepts the corrupted text silently. Contract now requires writing the prompt file with an explicit UTF-8 encoder (2026-07-29) |
 
 ## Metrics
 

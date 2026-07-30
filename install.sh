@@ -10,6 +10,7 @@
 #                  (Claude only; opt-in because no live chain has run yet)
 #   --with-hooks   also install and wire the maw-reason enforcement gate
 #                  (implies --with-reason)
+#   --with-selfreview  install maw-selfreview and its pre-commit gate (Claude only)
 set -e
 
 REPO="https://raw.githubusercontent.com/pockerhead/maw/main"
@@ -19,12 +20,16 @@ AGENTS="clarifier premise-challenge planner plan-reviewer-1 plan-reviewer-2 impl
 # spawns whose flags and isolation are verified on that host.
 REASON_SKILL="maw-reason"
 REASON_AGENTS="coordinator premise-check generator compressor attacker synthesizer"
+# maw-selfreview: one-stage review of an uncommitted diff, Claude-only for now.
+SELFREVIEW_SKILL="maw-selfreview"
+SELFREVIEW_AGENTS="reviewer"
 EFFORTS="low medium high xhigh max"
 
 INSTALL_CLAUDE=0
 INSTALL_CODEX=0
 WITH_HOOKS=0
 WITH_REASON=0
+WITH_SELFREVIEW=0
 TARGET_GIVEN=0
 for arg in "$@"; do
   case "$arg" in
@@ -32,8 +37,9 @@ for arg in "$@"; do
     --codex)       INSTALL_CODEX=1;  TARGET_GIVEN=1 ;;
     --all)         INSTALL_CLAUDE=1; INSTALL_CODEX=1; TARGET_GIVEN=1 ;;
     --with-reason) WITH_REASON=1 ;;
+    --with-selfreview) WITH_SELFREVIEW=1 ;;
     --with-hooks)  WITH_HOOKS=1; WITH_REASON=1 ;;
-    *) echo "Unknown flag: $arg (use --claude | --codex | --all [--with-reason] [--with-hooks])" >&2; exit 1 ;;
+    *) echo "Unknown flag: $arg (use --claude | --codex | --all [--with-reason] [--with-selfreview] [--with-hooks])" >&2; exit 1 ;;
   esac
 done
 if [ $TARGET_GIVEN -eq 0 ]; then
@@ -43,6 +49,10 @@ if [ $TARGET_GIVEN -eq 0 ]; then
     echo "No harness binary detected; defaulting to the Claude Code layout."
     INSTALL_CLAUDE=1
   fi
+fi
+if [ $WITH_SELFREVIEW -eq 1 ] && [ $INSTALL_CLAUDE -eq 0 ]; then
+  echo "--with-selfreview applies to the Claude Code surface only; ignoring." >&2
+  WITH_SELFREVIEW=0
 fi
 if [ $WITH_REASON -eq 1 ] && [ $INSTALL_CLAUDE -eq 0 ]; then
   echo "--with-reason/--with-hooks apply to the Claude Code surface only; ignoring." >&2
@@ -87,6 +97,13 @@ if [ $WITH_REASON -eq 1 ]; then
     fetch "skills/$REASON_SKILL/agents/$a.md" "$TMP/reason-agent-$a.md"
   done
   [ $WITH_HOOKS -eq 1 ] && fetch "hooks/maw-reason-gate.sh" "$TMP/maw-reason-gate.sh"
+fi
+if [ $WITH_SELFREVIEW -eq 1 ]; then
+  fetch "skills/$SELFREVIEW_SKILL/SKILL.md" "$TMP/$SELFREVIEW_SKILL.SKILL.md"
+  for a in $SELFREVIEW_AGENTS; do
+    fetch "skills/$SELFREVIEW_SKILL/agents/$a.md" "$TMP/sr-agent-$a.md"
+  done
+  fetch "hooks/maw-selfreview-gate.sh" "$TMP/maw-selfreview-gate.sh"
 fi
 
 install_surface() {
@@ -147,6 +164,50 @@ if [ $INSTALL_CLAUDE -eq 1 ]; then
     for a in $REASON_AGENTS; do
       cp "$TMP/reason-agent-$a.md" ".claude/skills/$REASON_SKILL/agents/$a.md"
     done
+  fi
+  if [ $WITH_SELFREVIEW -eq 1 ]; then
+    mkdir -p ".claude/skills/$SELFREVIEW_SKILL/agents"
+    cp "$TMP/$SELFREVIEW_SKILL.SKILL.md" ".claude/skills/$SELFREVIEW_SKILL/SKILL.md"
+    for a in $SELFREVIEW_AGENTS; do
+      cp "$TMP/sr-agent-$a.md" ".claude/skills/$SELFREVIEW_SKILL/agents/$a.md"
+    done
+    mkdir -p .claude/hooks
+    cp "$TMP/maw-selfreview-gate.sh" .claude/hooks/maw-selfreview-gate.sh
+    chmod +x .claude/hooks/maw-selfreview-gate.sh
+    SR_CMD='${CLAUDE_PROJECT_DIR}/.claude/hooks/maw-selfreview-gate.sh'
+    SR_WIRED=0
+    SR_SETTINGS=.claude/settings.json
+    if [ ! -e "$SR_SETTINGS" ]; then
+      cat > "$SR_SETTINGS" <<SREOF
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "$SR_CMD" } ] }
+    ]
+  }
+}
+SREOF
+      SR_WIRED=1
+    elif grep -q 'maw-selfreview-gate\.sh' "$SR_SETTINGS" 2>/dev/null; then
+      SR_WIRED=1
+    else
+      for PY in python3 python; do
+        command -v "$PY" >/dev/null 2>&1 || continue
+        if "$PY" - "$SR_SETTINGS" "$SR_CMD" <<'SRPY' 2>/dev/null
+import json, sys
+path, cmd = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as fh:
+    cfg = json.load(fh)
+pre = cfg.setdefault("hooks", {}).setdefault("PreToolUse", [])
+if not any(h.get("command") == cmd for e in pre for h in e.get("hooks", [])):
+    pre.append({"matcher": "Bash", "hooks": [{"type": "command", "command": cmd}]})
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(cfg, fh, indent=2)
+    fh.write(chr(10))
+SRPY
+        then SR_WIRED=1; break; fi
+      done
+    fi
   fi
   mkdir -p .claude/agents
   rm -f .claude/agents/maw-*.md   # drop stale variants from removed/renamed stems
@@ -225,6 +286,14 @@ if [ $INSTALL_CLAUDE -eq 1 ]; then
   echo "  .claude/skills/maw-execute-task/agents/*.md     ($agent_count raw agent bodies)"
   if [ $WITH_REASON -eq 1 ]; then
     echo "  .claude/skills/maw-reason/{SKILL.md,agents/*.md} ($reason_count raw role bodies, experimental)"
+  fi
+  if [ $WITH_SELFREVIEW -eq 1 ]; then
+    echo "  .claude/skills/maw-selfreview/{SKILL.md,agents/reviewer.md}"
+    if [ "${SR_WIRED:-0}" -eq 1 ]; then
+      echo "  .claude/hooks/maw-selfreview-gate.sh            (PreToolUse gate, wired)"
+    else
+      echo "  .claude/hooks/maw-selfreview-gate.sh            (PreToolUse gate - NOT wired, see below)"
+    fi
   fi
   echo "  .claude/agents/maw-*.md                         ($total subagents: $stem_total stems x $effort_count effort levels)"
   if [ $WITH_HOOKS -eq 1 ]; then

@@ -118,6 +118,18 @@ Reviewed adversarially by Codex on 2026-07-28 (`.brainstorm/CODEX_REASON_V1_REVI
 | source drift during a run | live ledger shows the working tree changing twice mid-run | **fixed 2026-07-28** — coordinator records `HEAD` + a `git status --porcelain` digest before the first spawn and after each one; a change ends the chain with `source-drift` rather than letting roles argue about different versions of the code |
 | installed copy can lag HEAD silently | the chain's own attacker found `.claude/` running `fast` and lacking `HALTED.md` handling | fixed — `install.sh` now installs from the working copy when run inside a checkout |
 
+## maw-selfreview (inline gate, Claude Code only)
+
+| Row | How | Status |
+|---|---|---|
+| gate branch coverage | 12 live invocations: non-commit command, nothing staged, under threshold, over threshold, `--no-verify`, `--amend`, explicit skip, reviewed-clean, reviewed-blocking, stale mark after the diff changed, invariant path at 2 lines | GREEN (2026-07-30) |
+| freshness is keyed to the diff, not to time | review mark is `sha256(staged diff)`; editing after review re-triggers | GREEN (2026-07-30) |
+| gate stays fast enough not to be bypassed | industry threshold is ~15s before `--no-verify` becomes habit | GREEN — **279ms**, no model call in the gate itself |
+| bypass is cheap and recorded | `MAW_SKIP_SELFREVIEW=1` appends to `maw/.selfreview-skips` | GREEN (2026-07-30) |
+| PreToolUse wiring into settings.json | installer cascade, `matcher: Bash` | GREEN (2026-07-30) — after fixing a generated-code bug where a newline literal broke the python branch silently |
+| live review actually run through the skill | spawn a real reviewer on a real diff | RED |
+| convergence rule (BLOCKER/MAJOR block, MINOR/TRACKED do not) validated on a real loop | run a change through several review rounds | RED — the rule is taken from the literature on review paralysis, not yet observed here |
+
 ## State machine
 
 | Row | How | Status |

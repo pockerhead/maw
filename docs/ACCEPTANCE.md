@@ -122,12 +122,12 @@ Reviewed adversarially by Codex on 2026-07-28 (`.brainstorm/CODEX_REASON_V1_REVI
 
 | Row | How | Status |
 |---|---|---|
-| gate branch coverage | 12 live invocations: non-commit command, nothing staged, under threshold, over threshold, `--no-verify`, `--amend`, explicit skip, reviewed-clean, reviewed-blocking, stale mark after the diff changed, invariant path at 2 lines | GREEN (2026-07-30) |
+| gate branch coverage | 17 live invocations: non-commit command, nothing staged, under threshold, over threshold, `--no-verify`, `--amend`, explicit skip, reviewed-clean, reviewed-blocking, stale mark after the diff changed, invariant path at 2 lines; plus the full cycle at a threshold the diff crosses — unreviewed blocks, clean verdict passes, blocking verdict blocks, edited-after-review blocks, explicit skip passes and is logged | GREEN (2026-07-30) |
 | freshness is keyed to the diff, not to time | review mark is `sha256(staged diff)`; editing after review re-triggers | GREEN (2026-07-30) |
 | gate stays fast enough not to be bypassed | industry threshold is ~15s before `--no-verify` becomes habit | GREEN — **279ms**, no model call in the gate itself |
 | bypass is cheap and recorded | `MAW_SKIP_SELFREVIEW=1` appends to `maw/.selfreview-skips` | GREEN (2026-07-30) |
 | PreToolUse wiring into settings.json | installer cascade, `matcher: Bash` | GREEN (2026-07-30) — after fixing a generated-code bug where a newline literal broke the python branch silently |
-| live review actually run through the skill | spawn a real reviewer on a real diff | RED |
+| live review actually run through the skill | codex reviewer on the real staged README diff, 69s, one spawn | GREEN (2026-07-30) — and it **found a genuine defect**: the README said the gate fires when the diff *exceeds* the threshold, while `maw-selfreview-gate.sh:67` exits only on `LINES < THRESHOLD`, so a diff of exactly 60 lines already triggers. Reported as MINOR with a `file:line`, not inflated to a blocker. Verdict `NO_BLOCKING_FINDINGS`. Trace in `.brainstorm/selfreview-run1/` |
 | convergence rule (BLOCKER/MAJOR block, MINOR/TRACKED do not) validated on a real loop | run a change through several review rounds | RED — the rule is taken from the literature on review paralysis, not yet observed here |
 
 ## State machine

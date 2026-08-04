@@ -222,6 +222,8 @@ maw/tasks/done/TASK-001/
 
 Plus `PCTX_PROPOSALS.md` in any task where an agent proposed a project-context change (see below).
 
+Plus `OPEN_DECISIONS.md` in any task where the orchestrator hit a judgement call that blocked nothing — a scope edge, an adjacent defect, a defensible choice between two options. Rather than stopping to ask and leaving the pipeline parked, it takes the defensible option and records the call, the alternative, and what would flip it. The whole file is surfaced at wrap-up, which is where you overrule it. Present in every mode; absent when the run had no such calls.
+
 ## Inline review — `/maw-selfreview` (Claude Code only)
 
 The pipeline is for work you hand over and walk away from. Most work is not that: you are in an ordinary session, you wrote something, and you are about to commit it. There you are both author and reviewer, which is not a review — you skip exactly the places you feel sure about, and you feel sure precisely where the defect is invisible to you.

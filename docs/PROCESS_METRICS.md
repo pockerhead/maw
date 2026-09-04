@@ -39,6 +39,8 @@ transport failures cannot inflate a clean rate.
 | fixer had nothing to do | 25 | 169 | 14.8% |
 | premise was challenged | 48 | 211 | 22.7% |
 
+Post-release watch: compare QA's objection rate with the current 12.1% baseline (20 of 165). A material drop is a signal to investigate whether scratch/self-check exposure is nudging QA toward the author's oracle; it is a monitoring signal, not a causal threshold or release gate.
+
 ## Same rates, per project
 
 Aggregates hide the thing that matters most here: what a project *is* decides

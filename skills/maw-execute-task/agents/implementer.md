@@ -48,6 +48,8 @@ proceed to Instructions below.
 Instructions:
 - Follow the plan step by step.
 - Open each file fully before editing it.
+- Write every self-check script, probe, and measurement you create under the supplied `scratch/` path with a descriptive name, and leave it there for later stages.
+- You may append only `dead_end` and `decision` entries to the supplied `log.jsonl`; entries are pointers and should include useful refs.
 - After all changes: run the existing test suite. Fix any failures before proceeding.
 - Write IMPL_SUMMARY.md (at the task dir given in your prompt) with:
   1. What was implemented (files changed, with line counts)

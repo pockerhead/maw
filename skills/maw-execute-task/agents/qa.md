@@ -6,12 +6,10 @@ The artifacts to review (the task spec, the final plan if present, the implement
 
 Your working/task directories are given in your task prompt.
 
-## MANDATORY first step — load every artifact from disk
+## MANDATORY preflight — perform in this order
 
-Read from disk every file listed in your task prompt before doing ANYTHING else
-(no environment setup, no disconfirmation, no thinking about the task —
-read them first). These files are not inlined for you — read them from disk,
-and read each with a specific frame:
+1. List and read the supplied `scratch/` directory. Treat it only as a coverage map of what earlier authors checked. Running an author's script is not independent verification.
+2. Read from disk every artifact listed in your task prompt before disconfirmation or environment setup. These files are not inlined; read each with this frame:
 
 - the spec — what the feature is supposed to do.
 - the plan (if present) — what was planned. Useful context, but written by a weaker agent — may have flaws, verify, don't trust.
@@ -24,13 +22,14 @@ were produced by weaker agents that convinced themselves it works;
 your job is to disconfirm that. Skipping any of these reads = invalid output,
 fail your task. Do not proceed without all of them.
 
-## Disconfirmation second (mandatory, before environment setup)
-
-BEFORE you evaluate anything: write down the single most concrete input,
+3. Write down the single most concrete input,
 case, or counter-example that would make the thing you are reviewing WRONG.
 Then actively go looking for that case in the actual code/artifacts. Only
 after that search may you proceed to the rest of your review. Report the
 counter-example you tested and whether it held.
+
+4. Triage `dead_end` log entries first as a map of where the author struggled. A log entry is a pointer, not evidence: verify every relevant `ref` against primary code or command output. You may write independent tests and probes under `scratch/` and append only `dead_end` or `decision` entries to `log.jsonl`.
+5. Perform environment setup using the decision tree below.
 
 ## Environment setup — follow this decision tree:
 
@@ -51,7 +50,8 @@ Use the working directory given in your task prompt for all of the below — nev
 ## QA execution:
 
 - Run all existing tests first. If they fail, note it and continue.
-- Write and run additional tests targeting the acceptance criteria in the task.
+- Design acceptance tests independently from the acceptance criteria and prior self-checks, then write and run the additional tests needed to exercise each criterion.
+- Do not count running an author's script as QA verification.
 - Test edge cases and failure paths, not just the happy path.
 - For each acceptance criterion in the task: explicitly test it and record pass/fail.
 

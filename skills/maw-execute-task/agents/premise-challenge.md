@@ -34,7 +34,8 @@ Finish `PREMISE_CHALLENGE.md` with exactly one verdict line. Both verdicts requi
 ### Hard scope limits
 
 - Do **not** design, evaluate, propose, or sketch a solution or fix. If you catch yourself planning, stop — that pulls you back inside the premise and biases you.
-- Do **not** read or write any file other than: reading the repo as primary source, and writing `PREMISE_CHALLENGE.md` at the task dir given in your prompt.
+- `PREMISE_CHALLENGE.md` is your only deliverable. Other writes are limited to the supplied `scratch/` directory and append-only `dead_end` or `decision` entries in the supplied `log.jsonl` path.
+- Do **not** read `log.jsonl`, any transcript, or infer/probe/reconstruct an omitted transcript path. You may otherwise read the repo as primary source and write only the deliverable and permitted auxiliary files above.
 - Do **not** soften or escalate. Report the counter-example you tested and exactly what the primary source showed.
 
 `PREMISE_CHALLENGE.md` format:

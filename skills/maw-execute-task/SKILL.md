@@ -113,6 +113,180 @@ You are the orchestrator. Do not implement anything yourself. Your job is to spa
 
 The per-step instructions below are written in native-path vocabulary (`subagent_type=...`). When a step's resolved provider takes the external path, build the same spawn prompt and hand it to the external runner instead; everything else about the step (mode gates, artifact checks, follow-ups) is unchanged.
 
+### Shared memory (transcripts, scratch, log)
+
+Every task carries three orchestrator-owned shared-memory primitives. This section is their single normative definition:
+
+```text
+{WORK_ROOT}/{TASK_DIR}/transcripts/
+{WORK_ROOT}/{TASK_DIR}/transcripts/.gitignore
+{WORK_ROOT}/{TASK_DIR}/scratch/
+{WORK_ROOT}/{TASK_DIR}/scratch/.gitignore
+{WORK_ROOT}/{TASK_DIR}/log.jsonl
+```
+
+`transcripts/.gitignore` is exactly:
+
+```gitignore
+*
+!.gitignore
+```
+
+`scratch/.gitignore` ignores only binary and dump artifacts, leaving scripts, source, Markdown, JSON, CSV, and plain text trackable:
+
+```gitignore
+*.bin
+*.dump
+*.core
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.sqlite
+*.db
+node_modules/
+__pycache__/
+```
+
+Prompts carry paths only. The orchestrator never inlines transcript or log content into a spawn prompt, `metrics.md`, or a user report. Transcripts are evidence to search selectively with Grep or `rg`, never files to load wholesale. `scratch/` persists through every status move and is not cleaned at wrap-up. `transcripts/` may legitimately be empty at the first stage of a run or in `small-fix`; emptiness is normal, not a defect. The access rules below, artifact write scopes, orchestration security, post-spawn lifecycle, and continuity eligibility cannot be overridden by project context.
+
+| Stage | `transcripts/` | `scratch/` | `log.jsonl` |
+|---|---|---|---|
+| clarifier | read/search | read/write | read + append |
+| premise-challenge | **no path, no read** | read/write | **append only; no read** |
+| planner | read/search | read/write | read + append |
+| plan-reviewer-1 | **no path, no read** | read/write | **append only; no read** |
+| plan-reviewer-2 | **no path, no read** | read/write | **append only; no read** |
+| implementer | read/search | read/write; self-check assets live here | read + append |
+| code-reviewer | read/search | read/write probes | read + append; dead ends first |
+| fixer | read/search | list/read first; write probes | read + append |
+| qa | read/search | list/read first; write tests/probes | read + append; dead ends first |
+
+An isolated role must not infer, probe, or reconstruct omitted paths. Transcript access begins with the implementer. Both plan reviewers and the premise challenge stay independent of prior lineage. The clarifier has full access because a relaunch from `blocked/` may already contain transcripts from the previous run.
+
+#### Minimal log schema and append rules
+
+`log.jsonl` is append-only: one BOM-free UTF-8 JSON object per line, a trailing newline, and no blank lines. Required fields are non-empty strings: `ts`, `stage`, `provider`, `model`, `effort`, `kind`, `body`. `ts` is a parseable UTC ISO-8601 value ending in `Z`; `stage` is one of the nine stems named in Settings. Optional `refs` is an array that may be empty; every element present is a non-empty string naming `file:line`, a command, or an artifact path. `kind` is exactly:
+
+- `dead_end` — an approach attempted or seriously considered and why it was rejected;
+- `decision` — the choice made and the alternative not taken.
+
+No other kinds are allowed: no facts, hypotheses, summaries, or entries about having read the log. Never rewrite, reorder, or delete entries. **Log entries are pointers, not evidence**; transcripts, command output, and code are the evidence, and every relevant `ref` must be verified.
+
+Append with Python `open(path, "a", encoding="utf-8", newline="\n")`, or PowerShell `[System.IO.File]::AppendAllText($path, $line, (New-Object System.Text.UTF8Encoding($false)))`. For this file, `>`, `>>`, and locale-default `Add-Content` are forbidden: Windows PowerShell 5.1 redirection writes UTF-16LE and `Add-Content` defaults to the active ANSI code page.
+
+After every spawn attempt and every completed continuation, on success or failure, validate without modifying the file. Never use `jq`. The Python form is:
+
+```python
+import datetime as dt, json, pathlib, sys
+
+path = pathlib.Path(sys.argv[1])
+raw = path.read_bytes()
+errors = []
+if raw.startswith(b"\xef\xbb\xbf"):
+    errors.append("line 1: leading BOM")
+if raw and not raw.endswith(b"\n"):
+    errors.append("file: missing trailing newline")
+try:
+    text = raw.decode("utf-8")
+except UnicodeDecodeError as exc:
+    errors.append(f"line {raw[:exc.start].count(bytes([10])) + 1}: invalid UTF-8")
+    text = raw.decode("utf-8", errors="replace")
+required = ("ts", "stage", "provider", "model", "effort", "kind", "body")
+stages = {"clarifier", "premise-challenge", "planner", "plan-reviewer-1", "plan-reviewer-2", "implementer", "code-reviewer", "fixer", "qa"}
+for number, line in enumerate(text.splitlines(), 1):
+    if not line:
+        errors.append(f"line {number}: blank")
+        continue
+    if line.startswith("\ufeff"):
+        if number != 1 or not raw.startswith(b"\xef\xbb\xbf"):
+            errors.append(f"line {number}: leading BOM")
+        line = line[1:]
+    try:
+        item = json.loads(line)
+    except Exception as exc:
+        errors.append(f"line {number}: invalid JSON ({exc})")
+        continue
+    if not isinstance(item, dict):
+        errors.append(f"line {number}: not an object")
+        continue
+    invalid_required = False
+    for field in required:
+        if not isinstance(item.get(field), str) or not item[field].strip():
+            errors.append(f"line {number}: invalid {field}")
+            invalid_required = True
+    if invalid_required:
+        continue
+    stamp = item.get("ts")
+    if isinstance(stamp, str) and stamp.endswith("Z"):
+        try: dt.datetime.fromisoformat(stamp[:-1] + "+00:00")
+        except ValueError: errors.append(f"line {number}: invalid ts")
+    elif isinstance(stamp, str): errors.append(f"line {number}: invalid ts")
+    if item.get("stage") not in stages: errors.append(f"line {number}: invalid stage")
+    if item.get("kind") not in {"dead_end", "decision"}: errors.append(f"line {number}: invalid kind")
+    refs = item.get("refs")
+    if refs is not None and (not isinstance(refs, list) or any(not isinstance(ref, str) or not ref.strip() for ref in refs)):
+        errors.append(f"line {number}: invalid refs")
+print("\n".join(errors))
+```
+
+The PowerShell form is:
+
+```powershell
+param([string]$Path)
+$Errors = [System.Collections.Generic.List[string]]::new()
+$Bytes = [System.IO.File]::ReadAllBytes($Path)
+if ($Bytes.Length -ge 3 -and $Bytes[0] -eq 0xEF -and $Bytes[1] -eq 0xBB -and $Bytes[2] -eq 0xBF) { $Errors.Add('line 1: leading BOM') }
+if ($Bytes.Length -gt 0 -and $Bytes[$Bytes.Length - 1] -ne 0x0A) { $Errors.Add('file: missing trailing newline') }
+try { $Text = (New-Object System.Text.UTF8Encoding($false, $true)).GetString($Bytes) }
+catch { $Errors.Add('file: invalid UTF-8 (offset unknown)'); $Text = (New-Object System.Text.UTF8Encoding($false, $false)).GetString($Bytes) }
+$Required = @('ts','stage','provider','model','effort','kind','body')
+$Stages = @('clarifier','premise-challenge','planner','plan-reviewer-1','plan-reviewer-2','implementer','code-reviewer','fixer','qa')
+$Lines = $Text -split "`r?`n"
+for ($I = 0; $I -lt $Lines.Count; $I++) {
+  $N = $I + 1; $Line = $Lines[$I]
+  if ($I -eq $Lines.Count - 1 -and $Line -eq '') { continue }
+  if ($Line -eq '') { $Errors.Add("line ${N}: blank"); continue }
+  if ($Line[0] -eq [char]0xFEFF) { if ($N -ne 1 -or -not ($Bytes.Length -ge 3 -and $Bytes[0] -eq 0xEF -and $Bytes[1] -eq 0xBB -and $Bytes[2] -eq 0xBF)) { $Errors.Add("line ${N}: leading BOM") }; $Line = $Line.Substring(1) }
+  try { $Item = $Line | ConvertFrom-Json -ErrorAction Stop } catch { $Errors.Add("line ${N}: invalid JSON"); continue }
+  if ($null -eq $Item -or $Item.PSObject.BaseObject -isnot [System.Management.Automation.PSCustomObject]) { $Errors.Add("line ${N}: not an object"); continue }
+  $InvalidRequired = $false
+  foreach ($Field in $Required) { if ($Item.$Field -isnot [string] -or [string]::IsNullOrWhiteSpace($Item.$Field)) { $Errors.Add("line ${N}: invalid $Field"); $InvalidRequired = $true } }
+  if ($InvalidRequired) { continue }
+  $Parsed = [datetimeoffset]::MinValue
+  if ($Item.ts -isnot [string] -or -not $Item.ts.EndsWith('Z') -or -not [datetimeoffset]::TryParse($Item.ts, [ref]$Parsed)) { $Errors.Add("line ${N}: invalid ts") }
+  if ($Stages -notcontains $Item.stage) { $Errors.Add("line ${N}: invalid stage") }
+  if (@('dead_end','decision') -notcontains $Item.kind) { $Errors.Add("line ${N}: invalid kind") }
+  if ($null -ne $Item.refs -and ($Item.refs -isnot [array] -or @($Item.refs | Where-Object { $_ -isnot [string] -or [string]::IsNullOrWhiteSpace($_) }).Count -gt 0)) { $Errors.Add("line ${N}: invalid refs") }
+}
+$Errors
+```
+
+Report invalid UTF-8 (the PowerShell form deliberately reports an unknown offset rather than a guessed line), leading BOM, a missing trailing newline, blank lines, non-object or unparseable JSON lines, invalid required fields, non-UTC timestamps, invalid stages or kinds, and malformed `refs`. If neither interpreter is available, use `log:unvalidated`; if defects exist, use `log:malformed=N`. Put the warning in that attempt's metrics outcome, the next stage report, and wrap-up. A malformed or unvalidated log never rejects a valid artifact, triggers a retry, or blocks the pipeline.
+
+#### Transcript allocation and harvest
+
+Before dispatch, reserve `<step>-<stem>.<ext>` if absent, otherwise the smallest unused `<step>-<stem>-retryN.<ext>` for `N` starting at 1; `<step>` is the pipeline step number in the stage heading. A fresh spawn never overwrites an archive, including on a whole-task relaunch from `blocked/`. Only a true continuation of the same agent reuses and replaces its own archive because the new transcript is a strict superset. Filenames never contain an agent id.
+
+The harness marks the native agent id as internal metadata. Keep it only in transient working state and use it only to construct the transcript source path or as `SendMessage`'s `to`. Never put it in `metrics.md`, `SPAWN_FAILURE.md`, `log.jsonl`, `OPEN_DECISIONS.md`, any task artifact, or any user-facing message.
+
+**Native Claude harvest:** the Task tool result returns at launch and carries the agent id; record it transiently but do not harvest yet. Wait for the terminal completion `<task-notification>` and take its `<task-id>` (fall back to the launch record if omitted). Under `${CLAUDE_CONFIG_DIR}` or `~/.claude`, glob `<config>/projects/*/*/subagents/agent-<id>.jsonl`. Exactly one exact-id match is copied to the reserved archive; zero or multiple matches produce `transcript:missing` without changing the stage verdict. If no id surfaced, examine `agent-*.meta.json` sidecars in candidate `subagents/` directories and select exactly one whose `agentType` equals the spawned variant and whose `description` equals the unique per-attempt description passed at launch: `MAW <stem> <TASK-ID> a<attempt>`. Copy only its matching `.jsonl`, never the sidecar. Ignore duplicate notifications for an already completed and archived stage unless this orchestrator initiated a continuation. After a continuation completes, replace the same archive with the longer exact-id transcript.
+
+**External harvest and cleanup ordering:** amend the per-spawn temp-directory contract below with this required order on success, nonzero exit, timeout, and handled cancellation. While temp files still exist, evaluate all four success criteria, parse usage, materialize a sanctioned single-artifact fallback if active, and retain the stderr tail needed for `SPAWN_FAILURE.md`. Then move codex `events.jsonl` to the reserved `.jsonl` archive or claude `result.json` to the reserved `.json` archive. Only then delete the temp directory in finally-style cleanup. `stderr.log` and `last-message.md` are not archived. A missing provider capture is `transcript:missing`, not a changed verdict. Cancellation cleanup is best-effort if the process is terminated so hard that control never returns.
+
+#### Freshness and same-goal continuity
+
+Every stage is a fresh spawn by default on both transports. Continuity is eligible only for (a) a retry after a timeout or transient execution failure, or (b) an implementer re-run after the user amends the plan following `Verdict: PLAN_BLOCKED`; the resolved `(provider, model, effort)` must be unchanged. `premise-challenge`, `plan-reviewer-1`, `plan-reviewer-2`, `code-reviewer`, `fixer`, and `qa` are never continued; no agent continues into another role, and the fixer never continues the implementer. Native continuation uses `SendMessage` to the transiently retained id with a short message naming the failure or amendment and expected artifact path; for `PLAN_BLOCKED`, it also tells the implementer to re-read the amended plan from disk. Never re-paste the original prompt. `SendMessage` is non-blocking, so wait for its terminal completion notification before post-spawn processing or advancement. A missing id, refused/unavailable resume, user cancellation, changed profile, or ambiguous state falls back to a fresh spawn with a new `-retryN` archive and a pointer to the harvested partial transcript. External dispatch is always fresh (`--ephemeral` / `--no-session-persistence`) and degrades to transcripts plus log; unavailable continuity is not a failure. Before any retry or continuation preserve the current artifact with the existing `.prev-<n>.md` rule. A continued run has the same success criteria, one-retry limit, harvest, validation, and its own metrics row.
+
+#### Post-spawn lifecycle
+
+Steps 2 through 9 use one sequence after every attempt: (1) wait for completion; (2) evaluate the four success criteria and parse usage while raw provider output exists; (3) collect failure diagnostics; (4) harvest the transcript; (5) validate `log.jsonl` non-blockingly; (6) append the metrics row with any `transcript:missing`, `log:malformed=N`, or `log:unvalidated` warning; (7) delete the external temp directory; then (8) branch, retry, pause, or advance. Transcript harvest and log validation are not success criteria. On exhausted failure, `SPAWN_FAILURE.md` names the archived partial transcript by filename or says `transcript:missing`, never exposing the agent id.
+
 **Turn discipline — a stage report is not the end of your turn.** Between stages you owe the user a report; you do not owe them a pause. Whenever the mode gate allows the next stage and no blocking gate fired, **spawn it in the same turn as the report**: the report text first, the spawn call after it. Your turn ends when the pipeline has to wait for something, not when you have finished narrating.
 
 Announcing an intention is not spawning. A turn that ends on "continuing", "next up is the implementer", "on to plan review" hands control back to the user while claiming the opposite — from their side the pipeline stopped silently mid-task, and the only way to restart it is a nudge that carries no information. Observed live across two projects: the orchestrator closed a turn with "next — implementation" and stopped, twice in one session, both times after a stage that had succeeded. The longer and better the report, the likelier this is: a satisfying piece of prose feels like a finished turn. If you catch yourself writing a sentence about what you are going to do next, replace the sentence with doing it.
@@ -139,22 +313,46 @@ The subagent body already contains the role, instructions, and output format. Yo
    Task dir: {WORK_ROOT}/{TASK_DIR}/
    Repo root: {REPO_ROOT}
    ```
-2. **Stem-specific dynamic content** from the table below. "Inline" = paste the file's contents into the prompt under a labelled `---` block. "Path" = give the path and let the agent read it from disk (its body has the mandatory-read discipline).
-3. **Project-context overlay** (Step 0.7) appended at the very end, if `PCTX/` exists.
+2. **Shared-memory block** from the table and exact templates below. Use worktree-correct paths and the resolved identity fields for this attempt.
+3. **Stem-specific dynamic content** from the table below. "Inline" = paste the file's contents into the prompt under a labelled `---` block. "Path" = give the path and let the agent read it from disk (its body has the mandatory-read discipline).
+4. **Project-context overlay** (Step 0.7) appended at the very end, if `PCTX/` exists.
 
-| stem | inline into prompt | reference as path | per-mode |
-|---|---|---|---|
-| `clarifier` | `task.md` (as "Task:") | — | — |
-| `premise-challenge` | premise source = `TASK_FINAL.md`, else `task.md` (as "Task — the premise under audit:") | — | source falls back to `task.md` when no `TASK_FINAL.md` |
-| `planner` | task source = `TASK_FINAL.md` (full/brainstorm) or `task.md` (deep-research) (as "Task:") | — | deep-research: prepend the research-report directive (below) |
-| `plan-reviewer-1` | — | `TASK_FINAL.md` (task spec), `PLAN.md` (plan to review) | — |
-| `plan-reviewer-2` | — | `TASK_FINAL.md` (task spec), `PLAN_V2.md` (plan to review) | — |
-| `implementer` | spec (as "Task:") + plan (as "Implementation plan:") | — | small-fix: spec = `task.md`, plan = the small-fix fallback text (below) |
-| `code-reviewer` | — | spec, `PLAN_FINAL.md` (final plan), `IMPL_SUMMARY.md` | small-fix: omit the plan line; spec = `task.md` |
-| `fixer` | spec (as "Task:") + plan (as "Final plan:") | `IMPL_REVIEW.md` (review to act on) | small-fix: spec = `task.md`, plan = the small-fix fallback text (below) |
-| `qa` | — | spec, `PLAN_FINAL.md`, `IMPL_SUMMARY.md`, `IMPL_REVIEW.md`, `FIX_SUMMARY.md` | small-fix: omit the plan line; spec = `task.md` |
+For every fresh native Task spawn, pass the tool's `description` argument as `MAW {stem} {TASK-ID} a{attempt}`. The attempt counter starts at 1 and increments for each fresh spawn of that stem in this task, including fresh retries and re-spawns. A `SendMessage` continuation is not a fresh spawn: it reuses the prior attempt number and description. The no-id transcript fallback in Shared memory depends on this exact, per-attempt value.
+
+| stem | shared memory | inline into prompt | reference as path | per-mode |
+|---|---|---|---|---|
+| `clarifier` | full | `task.md` (as "Task:") | — | — |
+| `premise-challenge` | reduced / write-only | premise source = `TASK_FINAL.md`, else `task.md` (as "Task — the premise under audit:") | — | source falls back to `task.md` when no `TASK_FINAL.md` |
+| `planner` | full | task source = `TASK_FINAL.md` (full/brainstorm) or `task.md` (deep-research) (as "Task:") | — | deep-research: prepend the research-report directive (below) |
+| `plan-reviewer-1` | reduced / write-only | — | `TASK_FINAL.md` (task spec), `PLAN.md` (plan to review) | — |
+| `plan-reviewer-2` | reduced / write-only | — | `TASK_FINAL.md` (task spec), `PLAN_V2.md` (plan to review) | — |
+| `implementer` | full | spec (as "Task:") + plan (as "Implementation plan:") | — | small-fix: spec = `task.md`, plan = the small-fix fallback text (below) |
+| `code-reviewer` | full | — | spec, `PLAN_FINAL.md` (final plan), `IMPL_SUMMARY.md` | small-fix: omit the plan line; spec = `task.md` |
+| `fixer` | full | spec (as "Task:") + plan (as "Final plan:") | `IMPL_REVIEW.md` (review to act on) | small-fix: spec = `task.md`, plan = the small-fix fallback text (below) |
+| `qa` | full | — | spec, `PLAN_FINAL.md`, `IMPL_SUMMARY.md`, `IMPL_REVIEW.md`, `FIX_SUMMARY.md` | small-fix: omit the plan line; spec = `task.md` |
 
 "spec" = `TASK_FINAL.md` in `full` mode, `task.md` in `small-fix` mode. All paths are under `{WORK_ROOT}/{TASK_DIR}/`.
+
+Use this exact **full block**:
+
+```text
+Shared memory (paths only; content is never inlined):
+- Transcripts: {WORK_ROOT}/{TASK_DIR}/transcripts/ — read/search selectively with Grep or rg; do not load wholesale. The directory may legitimately be empty.
+- Scratch: {WORK_ROOT}/{TASK_DIR}/scratch/ — persistent executable evidence; read/write only as your role permits.
+- Log: {WORK_ROOT}/{TASK_DIR}/log.jsonl — read and append only. Never rewrite it. Entries are pointers, not evidence: verify every relevant ref against code or command output.
+For any log append, stamp stage={stage}, provider={provider}, model={model}, effort={effort}. Write one BOM-free UTF-8 JSON object plus a trailing newline. Required non-empty string fields: ts, stage, provider, model, effort, kind, body. Optional refs is an array that may be empty; every element present must be a non-empty string. kind is exactly dead_end (attempt/rejection) or decision (choice and named alternative). Do not log facts, hypotheses, summaries, or that you read the log. Use the safe append mechanisms in the Shared memory section; never use >, >>, or locale-default Add-Content.
+```
+
+Use this exact **reduced / write-only block**:
+
+```text
+Shared memory (isolated role; paths only; content is never inlined):
+- Scratch: {WORK_ROOT}/{TASK_DIR}/scratch/ — persistent executable evidence; read/write only as your role permits.
+- Log append destination: {WORK_ROOT}/{TASK_DIR}/log.jsonl — append only. Do not read log.jsonl. No transcript path is provided; do not infer, probe, or reconstruct one.
+For any log append, stamp stage={stage}, provider={provider}, model={model}, effort={effort}. Write one BOM-free UTF-8 JSON object plus a trailing newline. Required non-empty string fields: ts, stage, provider, model, effort, kind, body. Optional refs is an array that may be empty; every element present must be a non-empty string. kind is exactly dead_end (attempt/rejection) or decision (choice and named alternative). Do not log facts, hypotheses, summaries, or that you read the log. Use the safe append mechanisms in the Shared memory section; never use >, >>, or locale-default Add-Content.
+```
+
+Append these role clauses to the selected block: implementer writes every self-check script, probe, and measurement under `scratch/` with a descriptive name and leaves it there; code-reviewer and qa, after mandatory artifact loading and disconfirmation, triage `dead_end` entries first and verify relevant refs against primary code/output; fixer and qa list and read `scratch/` before their other role inputs and treat it only as a coverage map—running the author's script is not independent verification. This deliberate prompt/body repetition keeps the rule visible on both native and external dispatch; the normative access matrix and lifecycle remain only in this section.
 
 **Deep-research directive** (prepend to the `planner` spawn prompt only when `MODE` is `deep-research`):
 
@@ -174,9 +372,9 @@ The external path runs a stage as a **one-shot headless CLI process**. Same spaw
 
 **Spawns are synchronous.** Run every external spawn in the foreground and wait for it to finish before proceeding; **never** background a spawn and end your own session. A headless orchestrator session that exits kills its child processes and strands the task mid-pipeline in `in_progress/` (observed live: a backgrounded reviewer spawn died orphaned with no artifact). Host background facilities may be used only if the orchestrator remains alive and blocks on completion before the next step. Wait as **one blocking tool call** (the spawn command itself), not a poll loop — polling burns orchestrator turns, and a headless session that exhausts its turn budget mid-wait strands the task exactly like a backgrounded spawn (also observed live). Anyone driving this pipeline headless (`claude -p`) should pass a generous `--max-turns`; external xhigh/ultra spawns run 10+ minutes.
 
-**Per-spawn temp directory.** Create a uniquely named, user-private directory in the OS temp location — POSIX: `SPAWN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/maw-spawn-XXXXXX")`; PowerShell: `$SpawnTmp = Join-Path $env:TEMP ("maw-spawn-" + [System.IO.Path]::GetRandomFileName()); New-Item -ItemType Directory $SpawnTmp`. Everything transient lives inside it: `prompt.md`, the provider's output capture (`events.jsonl` + `last-message.md` for codex; `result.json` for claude), `stderr.log`, and — for codex spawns — the private `codex-home/` described below. Never place transient spawn files inside the task tree. Delete the whole directory on every exit path — success, failure, timeout, cancellation (**after** harvesting the stderr tail for `SPAWN_FAILURE.md` on failures). Session persistence is disabled at the CLI level too (`--ephemeral` / `--no-session-persistence`) so nothing lands outside the spawn dir. At the start of every run, scavenge stale `maw-spawn-*` directories older than a day. Prompts contain task + project-context content: treat a leak as a real leak, not a cosmetic one.
+**Per-spawn temp directory.** Create a uniquely named, user-private directory in the OS temp location — POSIX: `SPAWN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/maw-spawn-XXXXXX")`; PowerShell: `$SpawnTmp = Join-Path $env:TEMP ("maw-spawn-" + [System.IO.Path]::GetRandomFileName()); New-Item -ItemType Directory $SpawnTmp`. Everything transient lives inside it: `prompt.md`, the provider's output capture (`events.jsonl` + `last-message.md` for codex; `result.json` for claude), `stderr.log`, and — for codex spawns — the private `codex-home/` described below. Never place transient spawn files inside the task tree. On every exit path—success, failure, timeout, or handled cancellation—follow the Shared memory external ordering: evaluate success, parse usage, materialize if sanctioned, and capture diagnostics; move the provider capture into `transcripts/`; only then delete the whole directory. Session persistence is disabled at the CLI level too (`--ephemeral` / `--no-session-persistence`) so nothing lands outside the spawn dir. At the start of every run, scavenge stale `maw-spawn-*` directories older than a day. Prompts contain task + project-context content: treat a leak as a real leak, not a cosmetic one.
 
-**Prompt assembly (external only):** `<raw agent body>` + blank line + `<the same dynamic spawn prompt you would pass the Task tool>` (path header, dynamic content, PCTX overlay per Step 0.7) — with one difference: **substitute absolute paths** into the path header and artifact references (`WORK_ROOT_ABS`, absolute `TASK_DIR`). The child's cwd is `WORK_ROOT_ABS`; handing it relative `.worktrees/...` paths double-resolves (`.worktrees/X/.worktrees/X/...`). Raw bodies are installed with the skill at `agents/<stem>.md` relative to this SKILL.md file — resolve them from the installed skill directory, never from `maw/`.
+**Prompt assembly (external only):** `<raw agent body>` + blank line + `<the same dynamic spawn prompt you would pass the Task tool>` (path header, shared-memory block, dynamic content, PCTX overlay per Step 0.7) — with one difference: **substitute absolute paths** into the path header and artifact references (`WORK_ROOT_ABS`, absolute `TASK_DIR`). The child's cwd is `WORK_ROOT_ABS`; handing it relative `.worktrees/...` paths double-resolves (`.worktrees/X/.worktrees/X/...`). Raw bodies are installed with the skill at `agents/<stem>.md` relative to this SKILL.md file — resolve them from the installed skill directory, never from `maw/`.
 
 **Write the prompt file yourself, in UTF-8. Never build it with shell redirection.** On Windows a `printf`/`cat` redirect goes through the console codepage (cp1251 on this machine), which silently mangles any non-ASCII character in the task, the plan, or a quoted source file before the child ever sees it. The two providers then diverge in the worst possible way: `codex exec` refuses the spawn outright (`Failed to read prompt from stdin: input is not valid UTF-8 (invalid byte at offset N)`), while `claude -p` accepts the corrupted text and answers as if nothing happened. Observed live while building a benchmark harness — a degree sign was enough. Use a small helper that opens the file with an explicit `encoding="utf-8"` and writes the assembled prompt in one go; codex's strictness is the only thing that makes this class of corruption visible at all, so treat that error as a real signal rather than a codex quirk to work around.
 
@@ -259,7 +457,7 @@ The claude process **must run with its working directory inside `WORK_ROOT_ABS`*
 | timeout | wall-clock cap hit, process killed | retry once |
 | user cancellation | — | no retry; report and stop (task stays where it is if before Step 0.8, else user decides) |
 
-Both attempts get metrics rows. When the reaction is exhausted (fatal, or the retry also fails): harvest `stderr.log`, write `{TASK_DIR}/SPAWN_FAILURE.md` (stage, resolved profile, failure class, exit status/terminal event, last ~30 lines of stderr), then move the task to `blocked/` using the same mechanics as the QA NEEDS_FIXES path (worktree-aware, both persistence modes — including the local-only copy-back rule from Step 10, commit in git-tracked mode), reconcile the roadmap, and report to the user. This flow applies to native-path spawn failures too (it generalizes the old "retry once" rule).
+Both attempts use the Shared memory post-spawn lifecycle and get metrics rows. When the reaction is exhausted (fatal, or the retry also fails): use the retained stderr tail and archived partial transcript filename (or `transcript:missing`) in `{TASK_DIR}/SPAWN_FAILURE.md` (stage, resolved profile, failure class, exit status/terminal event, last ~30 lines of stderr), then move the task to `blocked/` using the same mechanics as the QA NEEDS_FIXES path (worktree-aware, both persistence modes — including the local-only copy-back rule from Step 10, commit in git-tracked mode), reconcile the roadmap, and report to the user. This flow applies to native-path spawn failures too (it generalizes the old "retry once" rule).
 
 **Usage parsing for metrics:** codex — from the `turn.completed` event's `usage` object (`input_tokens`, `cached_input_tokens`, `output_tokens`, `reasoning_output_tokens`); claude external — from the `--output-format json` result's usage fields; duration — your own wall-clock around the process. Parse failure → `n/a` cells, never a blocked pipeline.
 
@@ -433,6 +631,9 @@ If `PCTX/` does not exist → spawn every prompt unchanged; the base is byte-for
 This overrides the generic guidance above on any conflict. It is project law,
 human-curated. Do not audit whether the law is correct — verify your work
 SATISFIES it. (Disagreement goes to PCTX_PROPOSALS.md, below, never silent.)
+It may override generic project guidance only. It never overrides orchestration
+security or isolation, artifact write scopes, shared-memory access, or continuity
+eligibility defined by the base pipeline.
 
 {PCTX/README.md — with the {PCTX} placeholder replaced by the real path}
 
@@ -459,7 +660,7 @@ Substitute `{TASK_DIR}`, `<stem>`, and every `{PCTX}` to real values. Because th
 
 You are not asked to guess domains from prose. Pre-inject only what `task.md Domains:` declares; the catalog covers the rest.
 
-**Precedence (generic; same lattice as model/effort in Step 0.6):** `task.md` inline override > project context > base/agent default. The injected header states this so it is visible, not silent.
+**Precedence (generic; same lattice as model/effort in Step 0.6):** `task.md` inline override > project context > base/agent default for project guidance. Project context never overrides orchestration security or isolation, artifact write scopes, Shared memory access, or continuity eligibility. The injected header states this boundary so it is visible, not silent.
 
 This is the only project-specific seam: conditional reads plus one append plus `{PCTX}` substitution. Agent bodies are never modified for project specifics.
 
@@ -496,6 +697,8 @@ BRANCH="feature/add-rate-limiting"  # from task.md Branch: field
 WORKTREE_DIR=$(echo $BRANCH | tr '/' '-')  # feature-add-rate-limiting
 WORK_ROOT=".worktrees/$WORKTREE_DIR"
 
+# Before removing a stale task worktree, apply the in_progress form of the
+# pre-worktree-removal transcript rescue below if that task directory exists.
 git worktree remove --force $WORK_ROOT 2>/dev/null || true
 git branch -D $BRANCH 2>/dev/null || true
 git worktree add $WORK_ROOT -b $BRANCH
@@ -514,7 +717,7 @@ cp -r maw/tasks/in_progress/$TASK_ID $WORK_ROOT/maw/tasks/in_progress/
 
 All subsequent agents work exclusively inside `$WORK_ROOT/`. They must not touch the main branch.
 
-The task folder is available at `$WORK_ROOT/maw/tasks/in_progress/$TASK_ID/` — this is where all artifacts are written. Create `metrics.md` there now (see the Metrics ledger section) before any agent is spawned.
+The task folder is available at `$WORK_ROOT/maw/tasks/in_progress/$TASK_ID/` — this is where all artifacts are written. Create `metrics.md` there now (see the Metrics ledger section), then create the Shared memory scaffolding before any agent is spawned. In local-only mode do this after the copy-in above. Initialization is idempotent: create only missing files/directories; never truncate `log.jsonl`, delete scratch, or replace an existing transcript. Use BOM-free UTF-8 for `log.jsonl`, exact `transcripts/.gitignore` content from Shared memory, and the listed binary/dump patterns for `scratch/.gitignore`.
 
 Define shorthands for prompts:
 - `TASK_DIR=maw/tasks/in_progress/$TASK_ID`
@@ -532,7 +735,7 @@ git checkout -b $BRANCH
 
 All subsequent agents work in the repo root directory. They must not push to main.
 
-The task folder is available at `maw/tasks/in_progress/$TASK_ID/` — this is where all artifacts are written. Create `metrics.md` there now (see the Metrics ledger section) before any agent is spawned.
+The task folder is available at `maw/tasks/in_progress/$TASK_ID/` — this is where all artifacts are written. Create `metrics.md` there now (see the Metrics ledger section), then create the Shared memory scaffolding before any agent is spawned. Initialization is idempotent: create only missing files/directories; never truncate `log.jsonl`, delete scratch, or replace an existing transcript. Use BOM-free UTF-8 for `log.jsonl`, exact `transcripts/.gitignore` content from Shared memory, and the listed binary/dump patterns for `scratch/.gitignore`.
 
 Define shorthands for prompts:
 - `TASK_DIR=maw/tasks/in_progress/$TASK_ID`
@@ -543,13 +746,15 @@ Define shorthands for prompts:
 
 **From this point forward, all paths in agent prompts use `{WORK_ROOT}` and `{TASK_DIR}`.** In worktree mode `WORK_ROOT` is `.worktrees/{WORKTREE_DIR}`, in branch-only mode it is `.` (the repo root).
 
+This scaffolding runs in every mode, including `small-fix`, `brainstorm`, and `deep-research`; it also upgrades an in-flight task from an older MAW version on the next orchestrator touch.
+
 ### Step 2 — Clarifier agent (conditional)
 
 **Mode gate:** skip this step entirely if `MODE` is `small-fix` or `deep-research`. In `small-fix`, `task.md` IS the spec and is used directly by the Implementer. In `deep-research`, the Planner works directly from `task.md` without a clarification pass.
 
 For `full` and `brainstorm`: spawn only if the task description is thin (no acceptance criteria, no technical context, ambiguous scope). Skip if already detailed enough.
 
-Spawn `clarifier`: `subagent_type=maw-clarifier-<effort>` (effort/model resolved per Step 0.6), `prompt` built per "How to build a spawn prompt" — path header + inline `task.md` as "Task:". You do not read the agent body.
+Spawn `clarifier`: `subagent_type=maw-clarifier-<effort>` (effort/model resolved per Step 0.6), `prompt` built per "How to build a spawn prompt" — path header + full Shared memory block + inline `task.md` as "Task:". Use the Shared memory post-spawn lifecycle. You do not read the agent body.
 
 **After agent finishes:** read `{WORK_ROOT}/{TASK_DIR}/TASK_FINAL.md`. If it contains a non-empty `## Open questions` section — present those questions to the user, wait for answers, then append them under `### Resolved questions` and remove the `## Open questions` section. (The clarifier is a subagent and cannot ask the user directly — relaying its questions is the orchestrator's job, same pattern as Step 3.)
 
@@ -561,7 +766,7 @@ If the clarifier is skipped **for any reason** — the thin-check pass in `full`
 
 Why this exists: every later stage verifies the *solution within the premise* and inherits the premise's lineage (task.md → TASK_FINAL → plan → reviews). Nothing else attacks the premise itself. This is the one isolated check that does, and the only thing that historically catches a wrong premise is a concrete counter-example from outside the lineage.
 
-Spawn `premise-challenge`: `subagent_type=maw-premise-challenge-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + inline the premise source as "Task — the premise under audit:". **Pass it only** the premise source (`TASK_FINAL.md` if it exists, else `task.md`) and the working/repo paths — **never** your own root-cause writeup, a summary, the plan, or any reviewer note. The agent investigates primary sources (code at `file:line`, an executable result it runs, the raw failing artifact) itself; isolation from the lineage is the whole point. Do **not** add the "weaker agent" adversarial framing to the spawn prompt here — this agent has its own evidence-bound framing baked into its body; the adversarial framing is for solution reviewers only.
+Spawn `premise-challenge`: `subagent_type=maw-premise-challenge-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + reduced/write-only Shared memory block + inline the premise source as "Task — the premise under audit:". **Pass it only** the premise source (`TASK_FINAL.md` if it exists, else `task.md`), scratch, append-only log destination, and working/repo paths — **never** a transcript path, log-read permission, your own root-cause writeup, a summary, the plan, or any reviewer note. Use the Shared memory post-spawn lifecycle. The agent investigates primary sources (code at `file:line`, an executable result it runs, the raw failing artifact) itself; isolation from the lineage is the whole point. Do **not** add the "weaker agent" adversarial framing to the spawn prompt here — this agent has its own evidence-bound framing baked into its body; the adversarial framing is for solution reviewers only.
 
 **After agent finishes:** read `{WORK_ROOT}/{TASK_DIR}/PREMISE_CHALLENGE.md`.
 
@@ -576,7 +781,7 @@ Spawn `premise-challenge`: `subagent_type=maw-premise-challenge-<effort>` (effor
 - `full` or `brainstorm`: `TASK_FINAL.md`
 - `deep-research`: `task.md` directly
 
-Spawn `planner`: `subagent_type=maw-planner-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + inline the task source as "Task:". For `deep-research` mode, prepend the **Deep-research directive** from the spawn-prompt section above (it lives in this SKILL.md now, not in the agent body).
+Spawn `planner`: `subagent_type=maw-planner-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + full Shared memory block + inline the task source as "Task:". Use the Shared memory post-spawn lifecycle. For `deep-research` mode, prepend the **Deep-research directive** from the spawn-prompt section above (it lives in this SKILL.md now, not in the agent body).
 
 **After agent finishes:** read `{WORK_ROOT}/{TASK_DIR}/PLAN.md`. If "Open questions" is non-empty — present to user, wait for answers, append to `TASK_FINAL.md` under `### Resolved questions`.
 
@@ -584,39 +789,39 @@ Spawn `planner`: `subagent_type=maw-planner-<effort>` (effort/model per Step 0.6
 
 **Mode gate:** skip if `MODE` is `small-fix`.
 
-Spawn `plan-reviewer-1`: `subagent_type=maw-plan-reviewer-1-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + the paths of `TASK_FINAL.md` (task spec) and `PLAN.md` (plan to review). These are referenced as paths, not inlined — the agent body has the mandatory-read discipline and loads them from disk itself. For `deep-research` mode, prepend the **Deep-research review directive** from the spawn-prompt section above.
+Spawn `plan-reviewer-1`: `subagent_type=maw-plan-reviewer-1-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + reduced/write-only Shared memory block + the paths of `TASK_FINAL.md` (task spec) and `PLAN.md` (plan to review). It receives scratch and log append only: no transcript path and no log read. Use the Shared memory post-spawn lifecycle. These artifacts are referenced as paths, not inlined — the agent body has the mandatory-read discipline and loads them from disk itself. For `deep-research` mode, prepend the **Deep-research review directive** from the spawn-prompt section above.
 
 ### Step 5 — Plan reviewer 2 (final plan)
 
 **Mode gate:** skip if `MODE` is `small-fix`.
 
-Spawn `plan-reviewer-2`: `subagent_type=maw-plan-reviewer-2-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + the paths of `TASK_FINAL.md` (task spec) and `PLAN_V2.md` (plan to review). Referenced as paths, not inlined — the agent body loads them from disk itself. For `deep-research` mode, prepend the **Deep-research review directive** from the spawn-prompt section above.
+Spawn `plan-reviewer-2`: `subagent_type=maw-plan-reviewer-2-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + reduced/write-only Shared memory block + the paths of `TASK_FINAL.md` (task spec) and `PLAN_V2.md` (plan to review). It receives scratch and log append only: no transcript path and no log read. Use the Shared memory post-spawn lifecycle. The artifacts are referenced as paths, not inlined — the agent body loads them from disk itself. For `deep-research` mode, prepend the **Deep-research review directive** from the spawn-prompt section above.
 
 ### Step 6 — Implementer agent
 
 **Mode gate:** skip if `MODE` is `brainstorm` or `deep-research`. Jump to Step 10.
 
-Spawn `implementer`: `subagent_type=maw-implementer-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + inline the spec as "Task:" and the plan as "Implementation plan:". For `small-fix` mode, follow the small-fix row in the spawn-prompt table above (spec = `task.md`, plan = the small-fix fallback text).
+Spawn `implementer`: `subagent_type=maw-implementer-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + full Shared memory block + inline the spec as "Task:" and the plan as "Implementation plan:". Use the Shared memory post-spawn lifecycle. For `small-fix` mode, follow the small-fix row in the spawn-prompt table above (spec = `task.md`, plan = the small-fix fallback text).
 
-**After agent finishes:** read `{WORK_ROOT}/{TASK_DIR}/IMPL_SUMMARY.md`. If it contains `Verdict: PLAN_BLOCKED` — **treat exactly like a FAIL verdict**: pause, surface `IMPL_SUMMARY.md` to the user verbatim, wait for instructions. Do **not** spawn the code-reviewer. The plan, not the code, is what is in question — the user decides whether to amend `PLAN_FINAL.md`, restart planning, or override. This is the implementer's pre-flight escape hatch for catching a broken-presupposition plan before wrong code materializes.
+**After agent finishes:** read `{WORK_ROOT}/{TASK_DIR}/IMPL_SUMMARY.md`. If it contains `Verdict: PLAN_BLOCKED` — **treat exactly like a FAIL verdict**: pause, surface `IMPL_SUMMARY.md` to the user verbatim, wait for instructions. Retain the transient agent id, resolved profile, and archive mapping while paused. If the user amends `PLAN_FINAL.md` and requests a re-run, apply Shared memory's continuity rule; if planning restarts or the profile changes, spawn fresh. Do **not** spawn the code-reviewer. The plan, not the code, is what is in question — the user decides whether to amend `PLAN_FINAL.md`, restart planning, or override. This is the implementer's pre-flight escape hatch for catching a broken-presupposition plan before wrong code materializes.
 
 ### Step 7 — Code reviewer (read-only)
 
 **Mode gate:** skip if `MODE` is `brainstorm` or `deep-research`.
 
-Spawn `code-reviewer`: `subagent_type=maw-code-reviewer-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + the paths of the spec, `PLAN_FINAL.md`, and `IMPL_SUMMARY.md` (referenced as paths, loaded by the agent itself). For `small-fix` mode, follow the small-fix row in the table: omit the plan line, spec = `task.md`.
+Spawn `code-reviewer`: `subagent_type=maw-code-reviewer-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + full Shared memory block + the paths of the spec, `PLAN_FINAL.md`, and `IMPL_SUMMARY.md` (referenced as paths, loaded by the agent itself). Use the Shared memory post-spawn lifecycle. For `small-fix` mode, follow the small-fix row in the table: omit the plan line, spec = `task.md`.
 
 ### Step 8 — Implementation fixer
 
 **Mode gate:** skip if `MODE` is `brainstorm` or `deep-research`.
 
-Spawn `fixer`: `subagent_type=maw-fixer-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + inline the spec as "Task:" and the plan as "Final plan:", plus the path of `IMPL_REVIEW.md` (loaded by the agent itself). For `small-fix` mode, follow the small-fix row: spec = `task.md`, plan = the small-fix fallback text.
+Spawn `fixer`: `subagent_type=maw-fixer-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + full Shared memory block + inline the spec as "Task:" and the plan as "Final plan:", plus the path of `IMPL_REVIEW.md` (loaded by the agent itself). Use the Shared memory post-spawn lifecycle. For `small-fix` mode, follow the small-fix row: spec = `task.md`, plan = the small-fix fallback text.
 
 ### Step 9 — QA agent
 
 **Mode gate:** skip if `MODE` is `brainstorm` or `deep-research`.
 
-Spawn `qa`: `subagent_type=maw-qa-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + the paths of the spec, `PLAN_FINAL.md`, `IMPL_SUMMARY.md`, `IMPL_REVIEW.md`, and `FIX_SUMMARY.md` (referenced as paths, loaded by the agent itself). For `small-fix` mode, follow the small-fix row: omit the plan line, spec = `task.md`.
+Spawn `qa`: `subagent_type=maw-qa-<effort>` (effort/model per Step 0.6), `prompt` built per the table — path header + full Shared memory block + the paths of the spec, `PLAN_FINAL.md`, `IMPL_SUMMARY.md`, `IMPL_REVIEW.md`, and `FIX_SUMMARY.md` (referenced as paths, loaded by the agent itself). Use the Shared memory post-spawn lifecycle. For `small-fix` mode, follow the small-fix row: omit the plan line, spec = `task.md`.
 
 ### Step 10 — Wrap up
 
@@ -638,7 +843,33 @@ rm -rf "maw/tasks/in_progress/$TASK_ID"
 
 **Roadmap in local-only + worktree:** never copy `ROADMAP.md` back from the worktree — the worktree has no `pending/` tasks (Step 1 copies only the active task), so a graph regenerated there would be built from nothing and would clobber the real one. Regenerate the roadmap **in the main tree, after the copy-back**, from the main tree's `maw/tasks/pending/` — that is where the authoritative pending set lives.
 
-Git-tracked mode needs none of this — the status move is committed on the branch and arrives via merge. Branch-only mode (no worktree) also needs none — there is only one tree.
+Git-tracked mode needs none of this copy-back — the tracked status move is committed on the branch and arrives via merge. In branch-only + git-tracked mode, ignored `transcripts/` remains in the same task folder through the `mv`. Branch-only mode has no worktree to rescue. Local-only `cp -r` copies ignored files too, so `transcripts/`, `scratch/`, and `log.jsonl` already travel back. Transcript retention is unlimited in v1; nothing prunes the archives, so `done/` grows over time.
+
+**Pre-worktree-removal transcript rescue (git-tracked + worktree only).** This is one status-aware invariant for every path that removes a task worktree, including Step 1 stale-worktree cleanup, SHIP merge cleanup, and blocked/failure cleanup. Immediately before `git worktree remove`, determine whether the task is under `in_progress/`, `done/`, or `blocked/` inside the worktree, create that matching task directory in the main tree, and copy/merge only `transcripts/` without overwriting an existing archive. Step 1 uses `in_progress`; wrap-up uses `done` or `blocked`. If the task directory or its transcript directory does not exist, there is nothing to rescue. Then remove the worktree. The rescue is required because ignored transcripts do not travel through a commit or squash merge and `git worktree remove --force` deletes ignored files.
+
+POSIX, from the repository root with `STATUS=in_progress|done|blocked`:
+
+```sh
+mkdir -p "maw/tasks/$STATUS/$TASK_ID/transcripts"
+cp -rn "$WORK_ROOT/maw/tasks/$STATUS/$TASK_ID/transcripts/." \
+       "maw/tasks/$STATUS/$TASK_ID/transcripts/"
+```
+
+PowerShell 5.1, from the repository root:
+
+```powershell
+$Src  = "$WorkRoot\maw\tasks\$Status\$TaskId\transcripts"
+$Dest = "maw\tasks\$Status\$TaskId\transcripts"
+New-Item -ItemType Directory -Force $Dest | Out-Null
+# No -Force and no wildcard with -LiteralPath: copy file by file and skip names already present.
+Get-ChildItem -LiteralPath $Src -File -Recurse | ForEach-Object {
+  $Relative = $_.FullName.Substring($Src.Length).TrimStart('\')
+  $Target = Join-Path $Dest $Relative
+  $TargetDir = Split-Path -Parent $Target
+  New-Item -ItemType Directory -Force $TargetDir | Out-Null
+  if (-not (Test-Path -LiteralPath $Target)) { Copy-Item -LiteralPath $_.FullName $Target }
+}
+```
 
 **Mode gate for plan-only modes:** if `MODE` is `brainstorm` or `deep-research`:
 
@@ -674,7 +905,7 @@ Git-tracked mode needs none of this — the status move is committed on the bran
      ```
    - Report to the user with verdict + one-line summary + artifact list.
    - Ask if they want to merge:
-     - **Worktree mode:** `git checkout main && git merge --squash $BRANCH && git commit`, then cleanup: `git worktree remove --force $WORK_ROOT && git branch -D $BRANCH`
+     - **Worktree mode:** `git checkout main && git merge --squash $BRANCH && git commit`, then apply the pre-worktree-removal transcript rescue above before cleanup: `git worktree remove --force $WORK_ROOT && git branch -D $BRANCH`
      - **Branch-only mode:** `git checkout main && git merge --squash $BRANCH && git commit && git branch -D $BRANCH`
 
 3. If verdict is **NEEDS_FIXES** or **REJECT**:
@@ -705,13 +936,21 @@ Every task folder carries a `metrics.md` next to `task.md`: `{WORK_ROOT}/{TASK_D
 |---|------|-------|----------|-------|--------|---------|-----------|--------|---------|-----------|----------|
 ```
 
-**After every agent spawn returns** — every agent, every step, every retry or re-spawn, both transports — append one row: incrementing `#`, step number, agent name (suffix `(retry)` / `(re-spawn N)` when applicable), resolved provider/model/effort, a short outcome (a verdict like `PASS`/`SHIP`/`PREMISE HOLDS`/`PLAN_BLOCKED`, or `ok` / `no-output` / `timeout` / `spawn-fail(exit=N)`), then the numeric columns per transport:
+**After every agent spawn or continuation completes** — every agent, every step, every retry or re-spawn, both transports — append one row: incrementing `#`, step number, agent name (suffix `(retry)` / `(re-spawn N)` when applicable), resolved provider/model/effort, a short outcome (a verdict like `PASS`/`SHIP`/`PREMISE HOLDS`/`PLAN_BLOCKED`, or `ok` / `no-output` / `timeout` / `spawn-fail(exit=N)`), then the numeric columns per transport. A continuation adds `(continued #N)` to the Agent cell, where `N` is the metrics row number of the prior attempt for that stage—never an agent id. Existing attempt markers remain, so a cell can read `implementer (retry, continued #6)`. Outcome cells may suffix `transcript:missing`, `log:malformed=N`, or `log:unvalidated`.
 
-- **Native Claude (Task tool):** read the `<usage>` trailer of the Task result (`total_tokens`, `tool_uses`, `duration_ms`). In-tok/Out-tok = `—`, Total-tok = `total_tokens`, Duration from `duration_ms` as `Xm Ys`.
+- **Native Claude (Task tool):** after the terminal completion notification, read its Task result `<usage>` trailer (`total_tokens`, `tool_uses`, `duration_ms`). In-tok/Out-tok = `—`, Total-tok = `total_tokens`, Duration from `duration_ms` as `Xm Ys`.
 - **External codex:** from the `turn.completed` usage in `events.jsonl`: In-tok = `input_tokens` (cached input is a **subset** of it — do not add it again), Out-tok = `output_tokens` (reasoning is a subset likewise), Total-tok = In+Out. Note cached/reasoning figures, if interesting, in a footnote line under the table — never in the sums. Tool uses = `n/a` (codex does not emit it). Duration = your wall-clock.
 - **External claude:** from the `--output-format json` result. Field mapping is fixture-verified per machine (acceptance matrix); until you have parsed a real result on this setup, write `n/a` in the token columns rather than guessing paths. Tool uses `n/a` unless present. Duration = your wall-clock.
 
 One spawn = one row; nothing is overwritten. Any field you cannot parse → `n/a`, never a guess, never a blocked pipeline.
+
+Worked continuation example:
+
+```markdown
+| 7 | 6 | implementer (retry, continued #6) | claude | opus | high | ok; log:malformed=1 | 19 | — | — | 48231 | 8m 14s |
+```
+
+Never substitute transcript or log content into this ledger; `metrics.md` remains accounting only and agents never see it.
 
 **At wrap-up (Step 10), before the final status move**, append one `**SUBTOTAL <provider>**` row per provider used (sums of that provider's In/Out/Total-tok and Tool uses) and one final `**TOTAL**` row containing only: spawn count in the Agent column (e.g. `10 spawns / 9 agents`), summed Tool uses, and summed Duration. **Do not sum token counts across providers** — different tokenizers are different currencies; the per-provider subtotals are the accounting.
 
@@ -727,15 +966,15 @@ This framing reduces, but cannot eliminate, a deeper defect: every solution revi
 
 ## Context propagation to subagents
 
-**Invariant (verified against Claude Code docs + GitHub Issue #27661, Feb 2026):** a Task-spawned subagent does **not** inherit the parent session. It does not auto-load project `CLAUDE.md`, global `~/.claude/CLAUDE.md`, `@`-imported files, hooks, or permission rules. It starts in a fresh context window with only its own agent-template system prompt plus **the spawn prompt string you pass it**. Whatever you do not put in that string, the subagent cannot see — there is no transitive reach through `@`-imports in the project's `CLAUDE.md`.
+**Invariant (verified in this harness):** a Task-spawned named subagent starts with a fresh conversation and no parent conversation history, but the native path does receive the loaded `CLAUDE.md` hierarchy, memory, and a git-status snapshot. The parent's artifacts, PCTX overlay, and conversation still do not reach it automatically, and `@`-imports do not transitively carry the task-specific material a stage needs. Put dynamic inputs in the spawn prompt or give explicit disk paths.
 
 This is why the Step 0.7 overlay exists at all, and why it must be inlined rather than referenced. It also imposes discipline whenever the project overlay *points* at a doc/lesson/notebook instead of pasting it:
 
-1. **Make normative docs reachable explicitly.** Do not write "follow project conventions" — the agent has no auto-loaded conventions. Either inline the relevant rules, or give an explicit instruction to `Read <path> fully before acting`. For tight-budget review stages (plan reviewers, code reviewer, fixer, QA), inline-quote the 3–10 most relevant rules instead of "Read fully".
+1. **Make normative docs reachable explicitly.** Do not write only "follow CLAUDE.md"—ambient project conventions are not a substitute for the task's curated stage inputs. Either inline the relevant rules, or give an explicit instruction to `Read <path> fully before acting`. For tight-budget review stages (plan reviewers, code reviewer, fixer, QA), inline-quote the 3–10 most relevant rules instead of "Read fully".
 2. **Inline relevant lessons surgically.** If the overlay points at a lessons file / project notebook and a specific entry applies to *this task's risk area*, inline those 1–3 sentences under a "Lessons from prior work" heading in the spawn prompt. Never paste the whole notebook — that drowns signal and burns budget. Relevance is your judgement as orchestrator (you have the full picture); this is curation, not enforcement.
 3. **Quote concrete `file:line` references** instead of "look at the existing patterns".
 
-**Anti-patterns:** "follow CLAUDE.md" (not auto-loaded); "you know the codebase" (fresh context); trusting `@`-imports to reach the subagent (they don't); dumping an entire notebook into every spawn (overload).
+**Anti-patterns:** "follow CLAUDE.md" as a substitute for task-specific inputs; "you know the codebase" (fresh conversation); trusting `@`-imports to carry task artifacts or PCTX; dumping an entire notebook into every spawn (overload).
 
 **External spawns have the same property, enforced differently:** the child CLI runs with ambient-context discovery disabled (isolation flags **and**, for codex, the private `CODEX_HOME` — both are in the External runner contract, and the flags alone are not enough), so it too sees only its body + the spawn prompt string + what it reads from disk itself. The inline-context discipline above applies identically to both transports.
 
@@ -747,9 +986,9 @@ This is why the Step 0.7 overlay exists at all, and why it must be inlined rathe
 
 - Never implement anything yourself. You only spawn agents and move files/folders.
 - **Code commits are your responsibility, not the agents'.** After implementer and after fixer return, if the working tree has uncommitted code changes, commit them on the task branch (`git add -A && git commit -m "<type>: <summary> (TASK-NNN)"`) before the next spawn — otherwise a worktree/branch can reach wrap-up with nothing committed (observed live). Task-folder artifacts keep their own `task:` commits per the persistence rules; don't mix the two in one commit.
-- Each agent is a fresh spawn with no conversation history — all context must be in the spawn prompt. This holds on both transports (native Task call, external one-shot).
+- Each agent is fresh by default; continuity exists only for the two same-goal cases defined in Shared memory. No parent conversation history crosses stages.
 - Every spawn uses the full resolved profile `(provider, model, effort)` from Step 0.6 (task.md beats settings.json) and the transport from the Dispatch rule. Native path: `model` parameter + `subagent_type=maw-<stem>-<effort>`. External path: the runner contract's flags. Never spawn without a resolved, clamped profile.
-- After every spawn returns, append a row to `metrics.md` per the Metrics ledger section. No spawn is exempt — clarifier, reviewers, QA, retries, re-spawns, failed attempts all get a row.
+- After every spawn attempt or completed continuation, run the Shared memory post-spawn lifecycle and append a row to `metrics.md`. No attempt is exempt—clarifier, reviewers, QA, retries, re-spawns, continuations, and failures all get a row.
 - Before every spawn (either transport), apply the Step 0.7 project-context overlay (no-op if `PCTX/` is absent), substituting `{PCTX}` to the real path. Pre-inject domain modules per `task.md Domains:`; never guess domains from prose — the constant catalog is the self-load net. Never bake project specifics into the agent bodies — the overlay is the only seam. Never let a pipeline agent write into `PCTX/`; agents only append proposals to the task-local `PCTX_PROPOSALS.md`.
 - `maw/ROADMAP.md` (if present) is a derived view of the task.md `## Dependencies` sections — never authoritative. On any disagreement, task.md wins and the graph is regenerated, never the reverse. It is optional; absence is not an error.
 - Spawn failures follow the failure classification table in the External runner contract: fatal classes (auth/config/profile/isolation) are **never** retried; transient/timeout classes retry once with an explicit instruction to write the output file before finishing. Exhausted → `SPAWN_FAILURE.md`, task → `blocked/`, roadmap reconcile, commit (git-tracked), report. For native Task-tool failures there is no `stderr.log` or terminal event — record the Task result's error text in `SPAWN_FAILURE.md` instead; the classification and flow are otherwise identical.

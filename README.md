@@ -90,7 +90,7 @@ Compare:
 |---|---|---|
 | Prompt rules (Karpathy-style) | Tell the agent "be careful" | Agent drifts from rules under complex context |
 | Self-review | Agent checks its own work | Same blind spots that caused the error review the error |
-| **MAW** | Independent agents verify against code | Reviewer has no shared context with implementer — different blind spots |
+| **MAW** | Independent agents verify against code | Reviewers get no shared conversation and verify code plus searchable evidence; the premise audit and both plan reviews are additionally isolated from prior transcripts and the log |
 
 ## Architecture
 
@@ -99,10 +99,10 @@ Compare:
 *(The diagram shows the stage flow; the provider dispatch layer — which harness runs each stage — is described under Settings below.)*
 
 Key design decisions:
-- **No shared context** — agents communicate only through files (task.md, PLAN.md, diffs). No chat history carries over. This is a common pattern in adversarial pipelines, but MAW enforces it across every stage including planning.
+- **Fresh by default, evidence shared through the task folder** — no conversation history crosses a stage. Agents can search harness-written transcripts, reuse executable evidence in scratch, and append only decisions or dead ends to a minimal log. Native continuity exists only for same-profile timeout/transient retries and an implementer re-run after the user amends a `PLAN_BLOCKED` plan; no premise, plan, code, fixer, or QA judging role is ever continued.
 - **Adversarial by default** — each agent's prompt includes the assumption that the previous agent was unreliable. Not hostile, but skeptical.
 - **Premise challenge** — before planning, an isolated agent fed only the task and the real system (never the orchestrator's framing, the plan, or any summary) tests whether the *premise itself* is wrong, and halts to the human if it is. Every other stage verifies the solution within the premise and inherits its lineage; this is the one structural check that attacks the frame. It reduces — does not eliminate — the "pipeline faithfully executes a wrong premise" failure; the human remains the last line.
-- **All state in git** — artifacts live in the task folder on a feature branch. Everything is inspectable and recoverable.
+- **Task-local state** — artifacts live in the task folder on a feature branch. Text artifacts and scratch source follow normal `maw/` persistence; privacy-sensitive transcript payloads are deliberately gitignored and rescued locally before worktree removal.
 
 ## Modes
 
@@ -209,16 +209,21 @@ maw/tasks/done/TASK-001/
 ├── IMPL_REVIEW.md    ← code review findings
 ├── FIX_SUMMARY.md    ← what was fixed after review
 ├── QA_REPORT.md      ← test results
+├── transcripts/      ← ignored, lossless harness-written spawn logs
+├── scratch/          ← persistent scripts, probes, measurements, and text evidence
+├── log.jsonl         ← append-only decisions/dead ends (pointers, not facts)
 └── metrics.md        ← per-agent tokens / tool uses / duration + task total
 ```
 
-`metrics.md` is written by the orchestrator (not by agents — they never see it). One row per agent spawn, including retries and re-spawns, with provider/model/effort columns; usage comes from the Task result's usage trailer (native spawns) or the CLI's JSON output (external spawns). Wrap-up appends per-provider `SUBTOTAL` rows plus a `TOTAL` row (spawn count, tool uses, duration — token counts are never summed across providers). Present in every mode.
+`metrics.md` is written by the orchestrator (not by agents — they never see it). One row per agent attempt, including retries, continuations, and re-spawns, with provider/model/effort columns; usage comes with the native completion notification or from the external CLI's JSON output. Wrap-up appends per-provider `SUBTOTAL` rows plus a `TOTAL` row (spawn count, tool uses, duration — token counts are never summed across providers). Present in every mode.
 
-**small-fix:** task.md + IMPL_SUMMARY.md + IMPL_REVIEW.md + FIX_SUMMARY.md + QA_REPORT.md + metrics.md
+**small-fix:** task.md + IMPL_SUMMARY.md + IMPL_REVIEW.md + FIX_SUMMARY.md + QA_REPORT.md + transcripts/ + scratch/ + log.jsonl + metrics.md
 
-**brainstorm:** task.md + TASK_FINAL.md + PREMISE_CHALLENGE.md + PLAN.md + PLAN_V2.md + PLAN_FINAL.md + metrics.md
+**brainstorm:** task.md + TASK_FINAL.md + PREMISE_CHALLENGE.md + PLAN.md + PLAN_V2.md + PLAN_FINAL.md + transcripts/ + scratch/ + log.jsonl + metrics.md
 
-**deep-research:** task.md + TASK_FINAL.md (orchestrator-written copy of task.md) + PREMISE_CHALLENGE.md + PLAN.md (research report) + PLAN_V2.md + PLAN_FINAL.md + metrics.md
+**deep-research:** task.md + TASK_FINAL.md (orchestrator-written copy of task.md) + PREMISE_CHALLENGE.md + PLAN.md (research report) + PLAN_V2.md + PLAN_FINAL.md + transcripts/ + scratch/ + log.jsonl + metrics.md
+
+Transcripts are complete harness/provider captures and are never pasted into prompts; later stages receive paths and search selectively. Their `.gitignore` keeps payloads out of ordinary commits because prompts, PCTX, excerpts, and secrets may appear there. This does not protect against local disclosure, backups, or `git add -f`. Retention is unlimited in v1, so `done/` grows. Scratch persists with the task as executable coverage evidence; fixer and QA inspect it but must verify independently. `log.jsonl` accepts only `decision` and `dead_end`; entries point to evidence and are never trusted without checking refs. Premise challenge and both plan reviewers receive scratch plus append-only log access, but no transcript path and no log read.
 
 Plus `PCTX_PROPOSALS.md` in any task where an agent proposed a project-context change (see below).
 
@@ -290,7 +295,7 @@ If `maw/project-context/` does not exist, the pipeline behaves byte-for-byte as 
 - `domains/<name>.md` — **domain-gated**, normative. Injected into every running stage (planner and reviewers included — planning correctness needs it) when the task is in that domain. It gets there two ways: pre-injected because `task.md` declared `Domains:` (a recorded decision `/maw-tasks` proposes and the user confirms), or self-loaded when an agent hits an observable catalog trigger a task did not predict (the recall safety net). Subsystem invariants, risk lessons, and pointers to bulky docs live here.
 - `agents/<stem>.md` — **stage-gated**, into one agent only. Build/test/runtime-QA tooling and stage skills — clarifier and planners do not carry tooling they never use.
 
-A subagent inherits nothing — not `CLAUDE.md`, not `@`-imports, not notebooks (a verified Claude Code invariant the pipeline is built around), so everything needed must be injected or read from disk by the agent itself. Project context is normative as **law to satisfy, not a claim to audit** — review agents verify the code satisfies it; whether the law itself is right is human-gated via `/maw-context --review`. Agents never edit the overlay: they append dated entries to that task's `PCTX_PROPOSALS.md`, folded in deliberately.
+A native named subagent starts with a fresh conversation and no parent history, but it does receive the loaded `CLAUDE.md` hierarchy, memory, and a git-status snapshot. The parent's task artifacts, PCTX overlay, and conversation still do not reach it, so dynamic inputs must be injected or read from explicit disk paths; `@`-imports are not a task-context transport. External spawns retain explicit ambient-context suppression. Project context is normative as **law to satisfy, not a claim to audit** — review agents verify the code satisfies it; whether the law itself is right is human-gated via `/maw-context --review`. Agents never edit the overlay: they append dated entries to that task's `PCTX_PROPOSALS.md`, folded in deliberately.
 
 This is reduced, human-authored machinery — a hand-written catalog and human-declared `Domains:`, no resolution engine, no token-budget gate, no includes. The base change is the orchestrator plus the `maw-context`/`maw-tasks` skills; the overlay seam never modifies the agent prompts.
 
@@ -334,6 +339,8 @@ MAW trades tokens for reliability. Token consumption depends on mode:
 
 Each agent consumes 40–70k tokens on a medium-sized codebase. Implementer and Code Review can exceed 100k on complex tasks. At Opus pricing, multiply accordingly.
 
+Every spawn also carries a fixed shared-memory path/access block (larger for the six full-access roles). Its real token impact is measured from per-run metrics rather than estimated here.
+
 Codex-provider stages are billed per your Codex auth mode (ChatGPT plan quota or API-key tokens) — the table above prices Claude tokens only; `metrics.md` keeps per-provider subtotals and never sums tokens across providers.
 
 The tradeoff: if the cost of shipping a bug exceeds the cost of running the pipeline, use MAW. Modes let you pick the right level of rigor per task instead of paying for the full pipeline every time.
@@ -371,7 +378,7 @@ First run asks two things, both saved to `maw/settings.json`.
 
 Agent names: `clarifier`, `premise-challenge`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`. Models are provider-scoped — claude: `sonnet`, `opus`, `haiku`, `fable`; codex: `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`. Effort: `low`, `medium`, `high`, `xhigh`, `max` (plus `ultra` on codex 5.6-family). Effort validity depends on the model (claude `haiku` caps at `high`; codex `gpt-5.5` caps at `xhigh`) — the orchestrator clamps against its versioned capability catalog and **stops with a report on an invalid pair; nothing silently downgrades**. Edit `maw/settings.json` directly to change the defaults later.
 
-**Cross-provider agents (experimental).** Any pipeline stage can run on a different harness than the orchestrator — e.g. code review on Codex while everything else runs on Claude. A cross-vendor reviewer brings a genuinely different prior, so its blind spots correlate less with the implementer's. External spawns are one-shot headless CLI runs with ambient-context isolation (the child loads neither the project's AGENTS.md/CLAUDE.md nor your personal one — for codex that takes a private per-spawn `CODEX_HOME` holding only a copy of `auth.json`, since no CLI flag suppresses `~/.codex/AGENTS.md`; suppression is canary-tested per machine as part of preflight), a fresh context, and per-spawn usage accounting where the CLI provides it (codex: yes; claude external: pending fixture — recorded as `n/a` until then). Requirements: the other CLI installed and logged in; the orchestrator preflights binary, auth, and a transport probe before a task leaves `pending/`. Token subtotals in `metrics.md` are per-provider — cross-provider counts are never summed (different tokenizers). **Status:** the cross-provider and Codex-host paths are experimental until the acceptance checklist in `docs/ACCEPTANCE.md` is green. The Claude-native path is unchanged in mechanics, with two newly specified rules pending an E2E run each (deep-research spec fallback; local-only+worktree copy-back) — see the same checklist.
+**Cross-provider agents (experimental).** Any pipeline stage can run on a different harness than the orchestrator — e.g. code review on Codex while everything else runs on Claude. A cross-vendor reviewer brings a genuinely different prior, so its blind spots correlate less with the implementer's. External spawns are one-shot headless CLI runs with ambient-context isolation (the child loads neither the project's AGENTS.md/CLAUDE.md nor your personal one — for codex that takes a private per-spawn `CODEX_HOME` holding only a copy of `auth.json`, since no CLI flag suppresses `~/.codex/AGENTS.md`; suppression is canary-tested per machine as part of preflight), a fresh context, and per-spawn usage accounting where the CLI provides it (codex: yes; claude external: pending fixture — recorded as `n/a` until then). Requirements: the other CLI installed and logged in; the orchestrator preflights binary, auth, and a transport probe before a task leaves `pending/`. Token subtotals in `metrics.md` are per-provider — cross-provider counts are never summed (different tokenizers). **Status:** the cross-provider and Codex-host paths are experimental until the acceptance checklist in `docs/ACCEPTANCE.md` is green. Newly specified native shared-memory mechanisms—transcript harvest and `SendMessage` continuation—also remain RED until live runs exercise them, alongside the existing deep-research fallback and local-only worktree copy-back rows.
 
 **Per-task override.** A task can override all three via optional `task.md` header lines, which beat `settings.json` for that task only:
 

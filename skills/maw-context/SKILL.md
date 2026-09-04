@@ -13,11 +13,13 @@ You maintain the project-context overlay for the MAW pipeline. This is the **onl
 
 Three tiers, each gated on a different axis. Conflating them is the mistake to avoid.
 
+Shared-memory paths, access rules, the `log.jsonl` schema, post-spawn lifecycle, and continuity rules belong only to the base `maw-execute-task` skill. Never duplicate or override them in project context.
+
 1. **`maw/project-context/README.md` — CONSTANT, every agent, every stage.** The orchestrator injects it into every spawn with the `{PCTX}` placeholder substituted to the real path (so it is *near*-verbatim, not pure-verbatim). It holds only what is true regardless of subsystem or stage: a short orientation, universal invariants, and a **domain catalog**. It is paid on every spawn, so it is bounded by deliberate discipline, not "free".
 2. **`maw/project-context/domains/<name>.md` — gated by DOMAIN.** A subsystem's normative invariants + risk lessons + pointers to bulky docs. Injected NORMATIVE into every running stage (including planner and plan reviewers — planning correctness needs them) when the task is in that domain. It reaches an agent two ways: pre-injected because `task.md` declared the domain, or self-loaded because the agent hit an observable trigger in the catalog (the recall safety net).
 3. **`maw/project-context/agents/<stem>.md` — gated by STAGE.** Stage tooling / project skills / checklists for one agent only. `<stem>` ∈ `clarifier|premise-challenge|planner|plan-reviewer-1|plan-reviewer-2|implementer|code-reviewer|fixer|qa`. Build/test/runtime-QA commands and stage skills go here, not in README — clarifier and planners must not carry tooling they never use. If the same tooling genuinely applies to several stages, repeat it tersely in each; do not hoist it to README.
 
-   Special case `agents/premise-challenge.md`: this agent is deliberately isolated from the task's premise lineage — it must see only the task and the real system. Its per-agent overlay may declare **only** where this project's primary sources / executable repro harness live (e.g. "the failing-test command is `make repro`", "runtime truth is observed via <tool>"). It must contain **no** premise narrative, no assumed root cause, no "how we usually do X" — that would re-inject the lineage the isolation exists to break. If you have nothing but narrative to add here, add nothing.
+   Special case `agents/premise-challenge.md`: this agent is deliberately isolated from the task's premise lineage — it must see only the task and the real system. Its per-agent overlay may declare **only** where this project's primary sources / executable repro harness live (e.g. "the failing-test command is `make repro`", "runtime truth is observed via <tool>"). It must contain **no** premise narrative, no assumed root cause, no "how we usually do X" — that would re-inject the lineage the isolation exists to break. If you have nothing but narrative to add here, add nothing. The same access boundary protects `agents/plan-reviewer-1.md` and `agents/plan-reviewer-2.md`: none of these three overlays may instruct its role to read `log.jsonl`, transcripts, or reconstruct an omitted path.
 
 Honest cost: the constant README grows with the number of domains (one catalog line each). At ~M domains it is roughly a few hundred tokens paid 8+ times per task. That is bounded and acceptable, not "tiny" — keep catalog entries to one line and prune dead domains.
 
@@ -118,6 +120,8 @@ Run after any write, or on request:
 - Every `## Domain catalog` line: trigger is zero-knowledge-observable (path/glob/literal token, not a concept), is one line, and its `{PCTX}/domains/<name>.md` target file actually exists. Dangling catalog entry or concept-only trigger → flag (an agent told to read a missing file, or unable to recognize the trigger from zero knowledge, is a hole).
 - Every domain module referenced by the catalog has a catalog entry, and vice versa (no orphans either direction).
 - No raw notebook dumps or whole-doc pastes anywhere — bulky sources are `## Pointers` references, not pasted.
+- No overlay duplicates a shared-memory path, schema, access matrix, lifecycle, or continuity rule from the base pipeline.
+- `agents/premise-challenge.md`, `agents/plan-reviewer-1.md`, and `agents/plan-reviewer-2.md` grant no transcript or `log.jsonl` read access. Flag a protected-role access grant or shared-memory duplication for human correction; never silently treat it as higher-priority law.
 - README is reasonably short for being injected every spawn; if it is heavy, warn and propose cuts / moving content into domain modules.
 
 Report what passed and what needs the user. Do not edit base pipeline files — this skill only touches `maw/project-context/` and reads `PCTX_PROPOSALS.md`.

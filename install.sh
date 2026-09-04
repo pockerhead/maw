@@ -91,6 +91,7 @@ done
 for a in $AGENTS; do
   fetch "skills/maw-execute-task/agents/$a.md" "$TMP/agent-$a.md"
 done
+fetch "skills/maw-execute-task/scripts/runner.sh" "$TMP/runner.sh"
 if [ $WITH_REASON -eq 1 ]; then
   fetch "skills/$REASON_SKILL/SKILL.md" "$TMP/$REASON_SKILL.SKILL.md"
   for a in $REASON_AGENTS; do
@@ -118,6 +119,8 @@ install_surface() {
   for a in $AGENTS; do
     cp "$TMP/agent-$a.md" "$root/maw-execute-task/agents/$a.md"
   done
+  mkdir -p "$root/maw-execute-task/scripts"
+  cp "$TMP/runner.sh" "$root/maw-execute-task/scripts/runner.sh"
 }
 
 if [ $INSTALL_CLAUDE -eq 1 ]; then
@@ -284,6 +287,7 @@ echo "Installed:"
 if [ $INSTALL_CLAUDE -eq 1 ]; then
   echo "  .claude/skills/{maw-execute-task,maw-tasks,maw-context}/SKILL.md"
   echo "  .claude/skills/maw-execute-task/agents/*.md     ($agent_count raw agent bodies)"
+  echo "  .claude/skills/maw-execute-task/scripts/runner.sh"
   if [ $WITH_REASON -eq 1 ]; then
     echo "  .claude/skills/maw-reason/{SKILL.md,agents/*.md} ($reason_count raw role bodies, experimental)"
   fi
@@ -307,6 +311,7 @@ fi
 if [ $INSTALL_CODEX -eq 1 ]; then
   echo "  .agents/skills/{maw-execute-task,maw-tasks,maw-context}/SKILL.md"
   echo "  .agents/skills/maw-execute-task/agents/*.md     ($agent_count raw agent bodies)"
+  echo "  .agents/skills/maw-execute-task/scripts/runner.sh"
   echo "  (maw-reason is Claude-only in v1 and was not installed here)"
 fi
 if [ $WITH_REASON -eq 1 ]; then

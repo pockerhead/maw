@@ -1,4 +1,4 @@
-# Acceptance matrix — harness-agnostic MAW (status as of 2026-09-04)
+# Acceptance matrix — harness-agnostic MAW (status as of 2026-09-05)
 
 Honest status ledger. GREEN = executed on this machine (Windows 11, codex-cli 0.145.0, claude 2.1.217). RED = not yet executed — release-gating unless marked deferrable. Each row: check, how, status.
 
@@ -17,6 +17,17 @@ Honest status ledger. GREEN = executed on this machine (Windows 11, codex-cli 0.
 | nested-directory canaries, both CLIs | canary file in a subdir of WORK_ROOT | RED |
 
 ## Transport & runner
+
+Shell runner update (2026-09-05): new external attempts use the installed `scripts/runner.sh`; Claude now streams JSONL (`--output-format stream-json --verbose`). Older GREEN rows below describe the invocation tested at that time, not automatic acceptance of this new path.
+
+| New check | How | Status |
+|---|---|---|
+| shell runner transport and installation fixtures | `sh tests/runner.sh` in Git Bash on Windows; argv/cwd, UTF-8/CRLF bytes, partial output, nonzero/64/65 exits, closed stdout reader, caller umask, absent/empty/stale artifacts, setup refusal, live progress before child exit; both surfaces and reinstall | GREEN (2026-09-05) |
+| shell runner real Claude Opus review with stream-json | live review of this change; actual model `claude-opus-5`, read-only tools, terminal `result/success` and `is_error: false`; follow-up and final passes are static, with tools disabled | GREEN as a transport check (2026-09-05); first review found a closed-stdout defect (regression reproduced exit 141), fixed with direct file capture; both subsequent verdicts NO_BLOCKING_FINDINGS |
+| shell runner real Codex stage and isolation canaries for both providers | full invocation with private home / empty setting sources | RED — existing pre-runner results do not cover this wrapper |
+| host process-tree timeout/cancel while runner streams, capture before cleanup | forced timeout and cancellation | RED — remains host-owned; runner does not implement tree termination |
+| shell runner on Linux/macOS | same fixtures on each OS | RED — not run |
+| Astra premium profile resolution | catalog, task intake, README, cost gate; Codex model metadata lists low through ultra, API lists low through max | statically checked; live Astra stage RED |
 
 | Row | How | Status |
 |---|---|---|
@@ -41,7 +52,7 @@ Honest status ledger. GREEN = executed on this machine (Windows 11, codex-cli 0.
 | Row | How | Status |
 |---|---|---|
 | codex usage arithmetic (cached/reasoning are subsets) | fixture from live `turn.completed` + vendor issues | GREEN (rule encoded; verify on next live run) |
-| claude -p JSON usage field mapping | success + failure fixtures | RED (columns stay n/a until green) |
+| claude -p stream-json terminal result usage field mapping | success + failure fixtures | RED (columns stay n/a until green) |
 | `maw-execute-task` outcome quality on a held-out benchmark | SWE-bench Multilingual, 70-instance stratified subset, gold patches held out of the solver's view, deterministic leak audit (HEAD == base_commit, single reachable commit, no remote refs) | PARTIAL — **7 resolved / 12 actually run**; the other 58 subset instances produced empty patches and were never attempted. All on `claude-sonnet-4-6`, effort medium, `small-fix` mode, ~4 spawns and ~$3.8 per instance. **No same-model single-agent baseline was run**, so the figure has nothing to be compared against; Sonnet does not appear on the benchmark's leaderboard either. Harness lives outside this repo (2026-07-31) |
 | `maw-execute-task` process behaviour on the live corpus | a local collector (not in this repo — `tools/` is gitignored) over 6 projects, 340 done task folders, 235 with a parseable `metrics.md` ledger; see `docs/PROCESS_METRICS.md` | GREEN as a measurement, and it is a measurement of process, not of correctness — no ground truth is involved. Headline, all rates conditional on the stage having returned a verdict: a reviewing stage objected in **39.3%** (70/178; over the whole 235-task ledgered corpus that is 29.8%), code review 34.8% (62/178), QA 12.1% (20/165), the fixer needed a second round in only **5.3%** (9/169), and the premise challenge rejected the premise in **22.7%** (48/211). Classifier coverage 91.8% of 1757 ledger rows (2026-07-31) |
 | transport reliability under real load | same collector, INFRA outcomes counted separately from verdicts | RED — **15.3%** of ledgered tasks contain at least one spawn that died without returning a verdict (API 529, stream timeout, operator kill, no output). First reported here as 29.4%, which was wrong: the classifier matched `pending` as INFRA before it could match `SHIP-PENDING-RUNTIME` as a human gate, so a game project's normal QA verdict was scored as a dead spawn. This is a floor: a spawn that died before its ledger row was written leaves no trace at all (2026-07-31) |

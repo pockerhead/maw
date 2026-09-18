@@ -49,6 +49,8 @@ printf '%s\n' 'maw: starting external process' 2>/dev/null || :
 seen=0
 previous=
 display=1
+# MAW_RUNNER_PROGRESS=0 keeps the start/exit lines and drops the event stream.
+[ "${MAW_RUNNER_PROGRESS:-1}" != 0 ] || display=0
 show_progress() {
     [ "$display" -eq 1 ] || return 0
     # Cosmetic extraction only. JSON validation belongs to the orchestrator.

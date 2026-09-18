@@ -227,7 +227,7 @@ maw/tasks/done/TASK-001/
 
 **deep-research:** task.md + TASK_FINAL.md (orchestrator-written copy of task.md) + PREMISE_CHALLENGE.md + PLAN.md (research report) + PLAN_V2.md + PLAN_FINAL.md + transcripts/ + scratch/ + log.jsonl + metrics.md
 
-Transcripts are complete harness/provider captures and are never pasted into prompts; later stages receive paths and search selectively. Their `.gitignore` keeps payloads out of ordinary commits because prompts, PCTX, excerpts, and secrets may appear there. This does not protect against local disclosure, backups, or `git add -f`. Retention is unlimited in v1, so `done/` grows. Scratch persists with the task as executable coverage evidence; fixer and QA inspect it but must verify independently. `log.jsonl` accepts only `decision` and `dead_end`; entries point to evidence and are never trusted without checking refs. Premise challenge and both plan reviewers receive scratch plus append-only log access, but no transcript path and no log read.
+Transcripts are complete harness/provider captures and are never pasted into prompts; later stages receive paths and search selectively. Their `.gitignore` keeps payloads out of ordinary commits because prompts, PCTX, excerpts, and secrets may appear there. This does not protect against local disclosure, backups, or `git add -f`. Retention is unlimited in v1, so `done/` grows. Scratch persists with the task as executable coverage evidence; fixer and QA inspect it but must verify independently. `log.jsonl` accepts only `decision` and `dead_end`; entries point to evidence and are never trusted without checking refs. Premise challenge and both plan reviewers receive scratch plus append-only log access, but no transcript path and no log read. All three are absent when `shared_memory` is `false` in `maw/settings.json` (see Settings).
 
 Plus `PCTX_PROPOSALS.md` in any task where an agent proposed a project-context change (see below).
 
@@ -379,6 +379,14 @@ First run asks two things, both saved to `maw/settings.json`.
 ```
 
 (Legacy v1 settings — `agent_model`/`agent_effort` + override maps — are migrated automatically on first run, preserving behavior. Other keys: `spawn_timeout_min` — wall-clock cap per external spawn, default 30; `allow_unverified_profile` — pass unknown models through with a warning instead of rejecting, default false; `auto_invoke_guard` — per-skill map gating model-chosen invocation, e.g. `{ "maw-execute-task": true }`, values `true` (confirm first, default when absent) | `false` (unattended) | `"never"` (decline).)
+
+**Spending fewer tokens.** Two optional keys, both default `true`:
+
+```json
+{ "shared_memory": false, "runner_progress": false }
+```
+
+`shared_memory: false` turns off `transcripts/`, `scratch/`, and `log.jsonl` for the whole run: nothing is scaffolded or harvested, the log is not validated, and every stage gets a one-line "disabled" notice instead of the shared-memory block. Stages go back to seeing only the task artifacts, so a fixer or QA no longer learns what earlier stages already tried. `runner_progress: false` makes the external runner print only its start and exit lines; the full event stream is still captured to disk.
 
 Agent names: `clarifier`, `premise-challenge`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`. Models are provider-scoped — claude: `sonnet`, `opus`, `haiku`, `fable`; codex: `gpt-6-astra` (OpenAI premium tier), `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`. Effort: `low`, `medium`, `high`, `xhigh`, `max` (plus `ultra` on codex Astra and 5.6-family). Effort validity depends on the model (claude `haiku` caps at `high`; codex `gpt-5.5` caps at `xhigh`) — the orchestrator clamps against its versioned capability catalog and **stops with a report on an invalid pair; nothing silently downgrades**. Edit `maw/settings.json` directly to change the defaults later.
 

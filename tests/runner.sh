@@ -74,6 +74,19 @@ cmp "$test_root/expected-live.jsonl" "$spawn/events.jsonl"
 [ "$(grep -c 'maw: assistant' "$test_root/live.log")" -eq 1 ]
 printf '%s\n' '{"type":"assistant"}' '{"type":"result"}' > "$test_root/expected.jsonl"
 
+# MAW_RUNNER_PROGRESS=0 drops the event stream but keeps start/exit lines and capture.
+attempt quiet
+expect_exit 0 env MAW_RUNNER_PROGRESS=0 sh "$runner" "$work" "$spawn" events.jsonl "$work/quiet.md" -- sh -c '
+    printf "%s\n" "{\"type\":\"assistant\"}"
+    sleep 2
+    printf "%s\n" "{\"type\":\"result\"}"
+    printf done > "$1"
+' fixture "$work/quiet.md" > "$test_root/quiet.log"
+[ "$(grep -c '^maw: ' "$test_root/quiet.log")" -eq 2 ]
+grep -q 'maw: starting external process' "$test_root/quiet.log"
+grep -q 'maw: process exited 0; artifact present' "$test_root/quiet.log"
+cmp "$test_root/expected.jsonl" "$spawn/events.jsonl"
+
 # Closing the host stdout reader must not break the provider or truncate capture.
 attempt closed-reader
 (

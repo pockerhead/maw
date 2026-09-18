@@ -37,6 +37,8 @@ Agent names everywhere are the agent file stems: `clarifier`, `premise-challenge
 - `providers.<p>.default_model` / `default_effort`: per-provider defaults, used whenever an agent resolves to provider `<p>` without an explicit model/effort of its own.
 - `agents.<name>`: an **atomic partial profile** for one agent — any of `provider`, `model`, `effort`. Values set here are *explicit* (see Step 0.6 resolution). Omitted fields inherit.
 - `spawn_timeout_min`: wall-clock cap per external spawn (default 30).
+- `shared_memory` (optional, default `true`): `false` turns off the task-folder shared memory — `transcripts/`, `scratch/`, `log.jsonl` — for every stage of the run. It trades cross-stage evidence for fewer tokens per stage; the exact off-behavior is defined once, in the Shared memory section.
+- `runner_progress` (optional, default `true`): `false` makes external spawns run with `MAW_RUNNER_PROGRESS=0`, so `scripts/runner.sh` prints only its start and exit lines instead of live event types. The capture file, exit codes, and `runner/` records are unchanged.
 - `allow_unverified_profile`: when `true`, a model absent from the capability catalog may be passed through to its provider with a warning instead of being rejected. Default `false`.
 - Machine facts (binaries present, login state) are **never** stored here — they are probed fresh each run (Step 0.65).
 - `auto_invoke_guard` (optional map): `{ "maw-execute-task": true | false | "never" }`. Governs **model-chosen** invocation of this skill (a human typing the command is never guarded). `true` (default when absent) — before any state change, present the chosen task, resolved profiles, and a cost estimate, and get explicit user confirmation. `false` — unattended model invocation allowed. `"never"` — decline model invocation entirely (the pre-v2 hard-off behavior).
@@ -155,6 +157,16 @@ Every task carries three orchestrator-owned shared-memory primitives. This secti
 node_modules/
 __pycache__/
 ```
+
+**Toggle.** Read `shared_memory` from `maw/settings.json` once per run, together with the other settings; absent means `true`. There is no per-task override and no per-primitive switch. When it is `false`, this whole section is inert for the run and every later reference to it resolves as follows:
+
+- no scaffolding: do not create `transcripts/`, `scratch/`, `log.jsonl`, or their `.gitignore` files. Anything already in the task folder from an earlier run is left untouched and unadvertised;
+- in a spawn prompt, both the full and the reduced block, with their role clauses, are replaced by this exact line: `Shared memory: disabled for this run. No scratch, log, or transcript path is supplied; skip every instruction in your role that refers to one, and keep your own probes out of the task folder.`;
+- the post-spawn lifecycle skips steps (4) and (5): no transcript allocation or harvest, no log validation, no `transcript:missing` / `log:*` warnings. On the external path the provider capture is deleted with the temp directory after usage and diagnostics are taken, and `SPAWN_FAILURE.md` carries the stderr tail only;
+- the pre-worktree-removal transcript rescue is skipped;
+- freshness and same-goal continuity are unchanged — they do not depend on the three primitives. A fallback fresh spawn simply has no partial transcript to point to.
+
+Isolation of `premise-challenge` and both plan reviewers is not weakened by the toggle: with it off, no role receives any of the paths.
 
 Prompts carry paths only. The orchestrator never inlines transcript or log content into a spawn prompt, `metrics.md`, or a user report. Transcripts are evidence to search selectively with Grep or `rg`, never files to load wholesale. `scratch/` persists through every status move and is not cleaned at wrap-up. `transcripts/` may legitimately be empty at the first stage of a run or in `small-fix`; emptiness is normal, not a defect. The access rules below, artifact write scopes, orchestration security, post-spawn lifecycle, and continuity eligibility cannot be overridden by project context.
 
@@ -316,7 +328,7 @@ The subagent body already contains the role, instructions, and output format. Yo
    Task dir: {WORK_ROOT}/{TASK_DIR}/
    Repo root: {REPO_ROOT}
    ```
-2. **Shared-memory block** from the table and exact templates below. Use worktree-correct paths and the resolved identity fields for this attempt.
+2. **Shared-memory block** from the table and exact templates below. Use worktree-correct paths and the resolved identity fields for this attempt. With `shared_memory: false`, the single disabled line from the Shared memory toggle goes here instead.
 3. **Stem-specific dynamic content** from the table below. "Inline" = paste the file's contents into the prompt under a labelled `---` block. "Path" = give the path and let the agent read it from disk (its body has the mandatory-read discipline).
 4. **Project-context overlay** (Step 0.7) appended at the very end, if `PCTX/` exists.
 
@@ -394,7 +406,7 @@ cp "${CODEX_HOME:-$HOME/.codex}/auth.json" "$SPAWN_TMP/codex-home/"
 
 **Installed shell runner.** All external stage attempts and the transport probe use `scripts/runner.sh` relative to this installed skill. It requires POSIX `sh` (Git Bash on Windows), with no Python, Node, jq, or compiled helper. Resolve `RUNNER` to that file's absolute path. The orchestrator still assembles provider argv, prepares isolation, creates the private temp directory and UTF-8 `prompt.md`, and archives the old artifact before calling it.
 
-Invocation: `sh "$RUNNER" "$WORK_ROOT_ABS" "$SPAWN_TMP" "$CAPTURE" "$ARTIFACT_ABS" -- command args...`. `CAPTURE` is `events.jsonl` for both providers (`result.json` remains accepted by the helper for non-streaming callers). `ARTIFACT_ABS` is the expected stage artifact (the probe's output for preflight); use `-` only for a sanctioned single-artifact materialization, then materialize and validate before accepting success. Pass arguments separately, never as an evaluated command string. The runner refuses an existing artifact or reused capture directory, runs synchronously in the work root, and redirects the child's stdout/stderr directly to files without decoding. An internal shell loop waits for the child and uses `awk` to display newly captured event types and tool-call activity about once a second; it does not print prompt text, tool payloads, or reasoning content. This display is best-effort, never a JSON validator or an input to stage decisions.
+Invocation: `sh "$RUNNER" "$WORK_ROOT_ABS" "$SPAWN_TMP" "$CAPTURE" "$ARTIFACT_ABS" -- command args...`. `CAPTURE` is `events.jsonl` for both providers (`result.json` remains accepted by the helper for non-streaming callers). `ARTIFACT_ABS` is the expected stage artifact (the probe's output for preflight); use `-` only for a sanctioned single-artifact materialization, then materialize and validate before accepting success. Pass arguments separately, never as an evaluated command string. The runner refuses an existing artifact or reused capture directory, runs synchronously in the work root, and redirects the child's stdout/stderr directly to files without decoding. An internal shell loop waits for the child and uses `awk` to display newly captured event types and tool-call activity about once a second; it does not print prompt text, tool payloads, or reasoning content. This display is best-effort, never a JSON validator or an input to stage decisions. Every displayed line lands in your own tool result; with `runner_progress: false` in settings, prefix the invocation with `MAW_RUNNER_PROGRESS=0` and the runner prints only its start and exit lines.
 
 It records UTC `runner/started` before invocation, then `runner/exit-code`, `runner/finished`, and `runner/artifact` (`present`, `missing`, or `materialize`) inside the spawn directory. Exit 64 means wrapper setup refusal; exit 65 means the child exited zero but the artifact is absent, empty, or a symlink; other child failures retain their exit code. Progress output is best-effort: a closed host stdout disables display without terminating the child or losing its file capture. A child's own 64/65 is distinguished by `runner/exit-code`. These files are transport diagnostics, not a new task ledger. A missing completion record is an interrupted or incomplete attempt, never success. Keep the directory until the Shared memory post-spawn lifecycle has consumed diagnostics and archived the capture; the runner never cleans it up.
 
@@ -519,7 +531,7 @@ Read `maw/settings.json`. If the file does not exist or `worktree_mode` is missi
    }
    EOF
    ```
-   (replace `"always"` with `"never"` or `"ask"` based on user's choice)
+   (replace `"always"` with `"never"` or `"ask"` based on user's choice). If the file already exists with other keys — a user may pre-create it with only `shared_memory` or `runner_progress` — merge `worktree_mode` into it instead of overwriting.
 
 If `worktree_mode` is `"ask"`, ask the user now:
 ```
@@ -707,7 +719,7 @@ cp -r maw/tasks/in_progress/$TASK_ID $WORK_ROOT/maw/tasks/in_progress/
 
 All subsequent agents work exclusively inside `$WORK_ROOT/`. They must not touch the main branch.
 
-The task folder is available at `$WORK_ROOT/maw/tasks/in_progress/$TASK_ID/` — this is where all artifacts are written. Create `metrics.md` there now (see the Metrics ledger section), then create the Shared memory scaffolding before any agent is spawned. In local-only mode do this after the copy-in above. Initialization is idempotent: create only missing files/directories; never truncate `log.jsonl`, delete scratch, or replace an existing transcript. Use BOM-free UTF-8 for `log.jsonl`, exact `transcripts/.gitignore` content from Shared memory, and the listed binary/dump patterns for `scratch/.gitignore`.
+The task folder is available at `$WORK_ROOT/maw/tasks/in_progress/$TASK_ID/` — this is where all artifacts are written. Create `metrics.md` there now (see the Metrics ledger section), then, unless `shared_memory` is `false`, create the Shared memory scaffolding before any agent is spawned. In local-only mode do this after the copy-in above. Initialization is idempotent: create only missing files/directories; never truncate `log.jsonl`, delete scratch, or replace an existing transcript. Use BOM-free UTF-8 for `log.jsonl`, exact `transcripts/.gitignore` content from Shared memory, and the listed binary/dump patterns for `scratch/.gitignore`.
 
 Define shorthands for prompts:
 - `TASK_DIR=maw/tasks/in_progress/$TASK_ID`
@@ -725,7 +737,7 @@ git checkout -b $BRANCH
 
 All subsequent agents work in the repo root directory. They must not push to main.
 
-The task folder is available at `maw/tasks/in_progress/$TASK_ID/` — this is where all artifacts are written. Create `metrics.md` there now (see the Metrics ledger section), then create the Shared memory scaffolding before any agent is spawned. Initialization is idempotent: create only missing files/directories; never truncate `log.jsonl`, delete scratch, or replace an existing transcript. Use BOM-free UTF-8 for `log.jsonl`, exact `transcripts/.gitignore` content from Shared memory, and the listed binary/dump patterns for `scratch/.gitignore`.
+The task folder is available at `maw/tasks/in_progress/$TASK_ID/` — this is where all artifacts are written. Create `metrics.md` there now (see the Metrics ledger section), then, unless `shared_memory` is `false`, create the Shared memory scaffolding before any agent is spawned. Initialization is idempotent: create only missing files/directories; never truncate `log.jsonl`, delete scratch, or replace an existing transcript. Use BOM-free UTF-8 for `log.jsonl`, exact `transcripts/.gitignore` content from Shared memory, and the listed binary/dump patterns for `scratch/.gitignore`.
 
 Define shorthands for prompts:
 - `TASK_DIR=maw/tasks/in_progress/$TASK_ID`

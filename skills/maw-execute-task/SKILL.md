@@ -21,10 +21,10 @@ Pipeline settings are stored in `maw/settings.json`. The orchestrator checks thi
   "allow_unverified_profile": false,
   "providers": {
     "claude": { "default_model": "sonnet",      "default_effort": "medium" },
-    "codex":  { "default_model": "gpt-5.6-sol", "default_effort": "medium" }
+    "codex":  { "default_model": "gpt-6.1-sol", "default_effort": "medium" }
   },
   "agents": {
-    "code-reviewer": { "provider": "codex", "model": "gpt-5.6-sol", "effort": "xhigh" },
+    "code-reviewer": { "provider": "codex", "model": "gpt-6.1-sol", "effort": "xhigh" },
     "planner":       { "model": "opus" }
   }
 }
@@ -60,24 +60,28 @@ This is a **catalog, not detection** — a versioned reference of known-valid (p
 | claude | `haiku` | low, medium, high | xhigh/max → reject |
 | claude | `fable` | low, medium, high, xhigh, max | premium tier — one-time "confirm cost" prompt per task |
 | codex | `gpt-6-astra` | low, medium, high, xhigh, max, ultra | OpenAI premium tier — one-time "confirm cost" prompt per task |
-| codex | `gpt-5.6-sol` | low, medium, high, xhigh, max, ultra | codex default |
-| codex | `gpt-5.6-terra` | low, medium, high, xhigh, max, ultra | |
-| codex | `gpt-5.6-luna` | low, medium, high, xhigh, max, ultra | |
-| codex | `gpt-5.5` | low, medium, high, xhigh | max/ultra → reject |
+| codex | `gpt-6.1-sol` | low, medium, high, xhigh, max, ultra | codex default; needs codex CLI ≥ 0.159.1 (older CLI + ChatGPT login → HTTP 400 "not supported") |
+| codex | `gpt-6-sol` | low, medium, high, xhigh, max, ultra | previous generation |
+| codex | `gpt-6-luna` | low, medium, high, xhigh, max | ultra → reject |
+| codex | `gpt-5.6-sol` | low, medium, high, xhigh, max, ultra | previous generation |
+| codex | `gpt-5.6-terra` | low, medium, high, xhigh, max, ultra | previous generation |
+| codex | `gpt-5.6-luna` | low, medium, high, xhigh, max | previous generation; ultra → reject |
+| codex | `gpt-5.5` | low, medium, high, xhigh | max/ultra → reject; retires from Codex 2026-10-14 |
 
-Astra is the premium capability choice; the codex default stays `gpt-5.6-sol/medium`. Sources: [OpenAI Codex models](https://learn.chatgpt.com/docs/models) and [Astra API model](https://developers.openai.com/api/docs/models/gpt-6-astra). API reasoning efforts are low through max; `ultra` is the Codex harness delegation mode, also advertised for Astra in the Codex model catalog checked 2026-09-04. This is not a claim that the API accepts `reasoning.effort=ultra`, or that an external Astra stage has passed live acceptance.
+Astra is the premium capability choice; the codex default is `gpt-6.1-sol/medium`, the same model OpenAI's Codex catalog uses as its default. It needs codex CLI ≥ 0.159.1: on 0.156 with ChatGPT sign-in it was rejected with HTTP 400, on 0.160 it ran (both checked 2026-10-03). On an older CLI, update it or set `gpt-6-sol` explicitly. Effort lists for the codex rows come from the Codex model metadata (`~/.codex/models_cache.json`, codex 0.160, fetched 2026-10-03). Sources: [OpenAI Codex models](https://learn.chatgpt.com/docs/models) and [Astra API model](https://developers.openai.com/api/docs/models/gpt-6-astra). API reasoning efforts are low through max; `ultra` is the Codex harness delegation mode, also advertised for Astra in the Codex model catalog checked 2026-09-04. This is not a claim that the API accepts `reasoning.effort=ultra`, or that an external Astra stage has passed live acceptance.
 
 Clamp rules (mandatory, after resolution — Step 0.6):
 
 - A resolved (model, effort) pair not valid per this table → **stop and report** the exact pair and the agent. Never silently downgrade an effort or auto-bump a model — the cost change is the user's call.
 - `ultra` is valid only when the resolved provider is codex (and the model supports it). Claude-side efforts are the five subagent-variant levels.
 - A model not in this table: reject and report — unless `allow_unverified_profile: true`, in which case pass it through to the provider with an explicit warning in the run log and metrics (`(unverified)` suffix in the Model column) and no capability claims; a spawn failure on such a profile is not retried, it is reported.
-- Model validity is provider-scoped: `opus` under provider=codex or `gpt-5.6-sol` under provider=claude → stop and report (see Step 0.6 explicit-wins-or-fails).
+- Model validity is provider-scoped: `opus` under provider=codex or `gpt-6.1-sol` under provider=claude → stop and report (see Step 0.6 explicit-wins-or-fails).
 
-**Cross-tier dominance notes (July 2026, external benchmarks; historical, not re-measured for Astra):**
+**Cross-tier dominance notes (July 2026, external benchmarks; historical, not re-measured for Astra or gen-6 Sol/Luna):**
 
 - claude: `fable` at **low** effort outperforms `opus` at max on hard agentic coding (SWE-bench Pro ~75 vs ~69) at roughly half the per-task cost — fable-low is the cheap entry to the premium tier; no opus effort reaches fable. `sonnet` at xhigh can cost **more** than opus at comparable accuracy — sonnet's value zone is low..high; do not chase opus with sonnet-xhigh.
 - codex: `gpt-5.6-sol` at medium beats `terra` at xhigh on intelligence benchmarks — terra is a latency/throughput tier, not a catch-up tier; `luna` and `sol` sit on the intelligence-per-cost Pareto frontier. `ultra` on sol is a different mechanism, not a bigger thinking budget: it coordinates parallel subagents with synthesis (~2–3× cost, small single-digit accuracy gains). **Ultra reliability caveat (observed live, Windows, codex 0.145):** ultra's multi-agent code-mode failed its internal host handshake repeatedly (`code-mode host exited during handshake` in stderr — no disk reads possible, ~500k tokens burned with no artifact) while single-agent `xhigh` completed the same stage cleanly. Prefer `xhigh` for external codex stages until ultra is verified on the target machine; treat repeated handshake errors as fatal-env (no retry on the same effort — retry at xhigh is the sanctioned operator move). Ultra spawns that do run need `2× spawn_timeout_min` (multi-agent runs long).
+- codex gen-6 (vendor claims, September 2026, not measured here): `gpt-6-sol` makes about half the mistakes of `gpt-5.6-sol` at half its token price ($2/$10 vs $4/$20 per M); `gpt-6.1-sol` is claimed near Astra on agentic coding at one-fifth of Astra's price; `gpt-6-luna` is $0.10/$0.50. On these numbers the 5.6 family has no profile where it is the better buy; keep it only for reproducing older runs.
 - Rule of thumb when building profiles: **raise effort within a model for cost control; switch tier for capability; never max-out a lower tier to imitate a higher one** — cross-tier catch-up via effort is Pareto-inefficient on both providers.
 
 ---
@@ -559,7 +563,7 @@ For each "Customize", ask which agents and which value, then write schema-v2 `ma
 
 ```
 Providers: default=codex, premise-challenge=claude
-Models: default=gpt-5.6-terra, code-reviewer=gpt-5.6-sol
+Models: default=gpt-6-luna, code-reviewer=gpt-6.1-sol
 Effort: code-reviewer=xhigh
 ```
 
@@ -570,7 +574,7 @@ Parse each line as comma-separated tokens: `default=<v>` (or a bare `<v>`) sets 
 1. **Provider**: task.md per-agent > task.md task-wide > `settings.agents.<n>.provider` > `settings.default_provider` > host harness. (`"host"` resolves to the harness running this orchestrator.)
 2. **Model and effort — explicit-wins-or-fails:**
    - A value is **explicit for this agent** if it came from task.md per-agent (`<agent>=v`) or `settings.agents.<n>`. An explicit value that is invalid for the resolved provider → **stop and report** the exact pair (e.g. "code-reviewer: model `opus` is not a codex model"). Never silently substitute.
-   - A value is **inherited** if it came from task.md `default=` or a provider default. An inherited value invalid for the resolved provider → fall through to `providers.<p>.default_model` / `default_effort`, then to built-ins (`claude: sonnet/medium`, `codex: gpt-5.6-sol/medium`). A task-wide `Models: default=opus` therefore means "opus wherever the provider is claude" and does not break the one codex agent.
+   - A value is **inherited** if it came from task.md `default=` or a provider default. An inherited value invalid for the resolved provider → fall through to `providers.<p>.default_model` / `default_effort`, then to built-ins (`claude: sonnet/medium`, `codex: gpt-6.1-sol/medium`). A task-wide `Models: default=opus` therefore means "opus wherever the provider is claude" and does not break the one codex agent.
 3. **Clamp** the resolved triple against the Provider capability catalog (see that section). Any violation → stop and report.
 
 **Normative examples (truth table):**
@@ -578,9 +582,9 @@ Parse each line as comma-separated tokens: `default=<v>` (or a bare `<v>`) sets 
 | Situation | Result |
 |---|---|
 | zero-config, Claude Code host | every agent (claude, sonnet, medium) — same resolved profiles as v1 |
-| zero-config, Codex host | every agent (codex, gpt-5.6-sol, medium) |
-| `Providers: code-reviewer=codex`, nothing else | code-reviewer (codex, gpt-5.6-sol, medium); rest host defaults |
-| `Providers: code-reviewer=codex` + `Models: default=opus` | code-reviewer (codex, gpt-5.6-sol, medium); rest (claude, opus, medium) |
+| zero-config, Codex host | every agent (codex, gpt-6.1-sol, medium) |
+| `Providers: code-reviewer=codex`, nothing else | code-reviewer (codex, gpt-6.1-sol, medium); rest host defaults |
+| `Providers: code-reviewer=codex` + `Models: default=opus` | code-reviewer (codex, gpt-6.1-sol, medium); rest (claude, opus, medium) |
 | `Providers: code-reviewer=codex` + `Models: code-reviewer=opus` | HARD FAIL — explicit cross-provider contradiction |
 | migrated legacy settings, no task lines | same resolved profiles as pre-migration |
 | requested provider not installed/authenticated | preflight failure (Step 0.65), task never leaves `pending/` |

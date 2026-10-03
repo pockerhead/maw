@@ -67,7 +67,7 @@ There is no `task.md` here, so the per-task override layer of the pipeline does 
 
 ```json
 { "default_provider": "host",
-  "providers": { "codex": { "default_model": "gpt-5.6-sol" } } }
+  "providers": { "codex": { "default_model": "gpt-6.1-sol" } } }
 ```
 
 Note what this does *not* say: which role goes to which provider. That is the seed's job.

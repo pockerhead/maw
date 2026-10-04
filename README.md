@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/maw-lockup-dark.png">
+    <img src="assets/logo/maw-lockup-light.png" alt="MAW logo" width="360">
+  </picture>
+</p>
+
 # MAW — Multi-Agent Workflow for Claude Code & Codex CLI
 
 **Prompt rules tell an LLM what to do. MAW adds a verification layer for when it doesn't listen.**

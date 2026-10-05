@@ -9,159 +9,23 @@
 
 **Prompt rules tell an LLM what to do. MAW adds a verification layer for when it doesn't listen.**
 
-A sequential adversarial pipeline where each agent reviews the previous agent's work against actual code, not descriptions. Each agent operates under the assumption the previous one was weaker and made mistakes.
-
-Prompt guidelines like Karpathy's (30k+ stars) are useful conventions — MAW is complementary: it catches what slips through despite the rules.
-
-## What has actually been measured
-
-Three separate measurements, none of them a marketing number. Full detail in
-[`docs/PROCESS_METRICS.md`](docs/PROCESS_METRICS.md),
-[`docs/TASK_COMMIT_ANALYSIS.md`](docs/TASK_COMMIT_ANALYSIS.md) and
-[`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md).
-
-**Held-out benchmark — partial.** SWE-bench Multilingual, 70-instance stratified
-subset with gold patches held out of the solver's view and a deterministic leak
-audit: **7 resolved out of 12 instances actually run**. The other 58 produced
-empty patches and were never attempted. All on Sonnet in `small-fix` mode.
-There is **no same-model single-agent baseline**, so this figure has nothing to be
-compared against — it is a data point, not a claim of superiority.
-
-**Process behaviour — 340 completed tasks across 6 real projects**, 235 with a
-parseable stage ledger:
-
-Every rate below is conditional on the stage having returned a verdict at all —
-a spawn that died neither approved nor objected, so it is excluded from both
-sides rather than counted as approval. The denominators differ per row and are
-given explicitly.
-
-| | | |
-|---|---|---|
-| a reviewing stage objected | **39.3%** | 70 of 178 tasks that got a verdict from one |
-| code review objected | 34.8% | 62 of 178 |
-| QA objected | 12.1% | 20 of 165 |
-| fixer needed a second round | **5.3%** | 9 of 169 |
-| premise challenge rejected the premise | 22.7% | 48 of 211 |
-
-The 39.3% is the case for the pipeline: in four out of ten tasks where a review
-stage reached a verdict, it found something worth answering. Over the whole
-235-task ledgered corpus that is 29.8%, the difference being tasks where no
-review stage returned anything. The 5.3% is the case against review
-paralysis — the loop converges on the first pass almost always. Of the 170 tasks
-that ran a fixer, 161 finished in one round and 6 needed two; three went further,
-to a third, a fifth and a seventh round. The 5.3% rate is over the 169 where the
-fixer returned a verdict at all. A long tail exists and is not hidden: QA reached
-an eighth round once.
-
-Project type decides what QA can even check, and the gap is much larger than the
-aggregate suggests. On the backend project QA reached SHIP in **94.1%** of tasks
-with a **0%** human gate. On the game project QA closed only **36.5%** by itself
-and handed **60.4%** to a person — `SHIP-PENDING-RUNTIME` and its variants, where
-headless gates covered build, tests and invariants and feel, timing and anything
-visual could not be judged without playing it.
-
-Code review, meanwhile, objected at nearly the same rate in both (33.8% vs 35.8%).
-The natural reading is that reviewing code is domain-independent while verifying
-behaviour is not, so on a game the QA stage is structurally a partial verifier —
-but that is a hypothesis this data is consistent with, not one it establishes.
-Two projects, no ground truth, nothing varied deliberately. What the numbers do
-support without interpretation: **QA numbers from one project do not transfer to
-another**, and an aggregate across project types hides a factor-of-two difference.
-
-**Did tasks leave damage behind? No detectable signal.** For each task, the first
-later task to touch its files (magnet files excluded) was a bugfix at **1.02x and
-1.20x the repo's base rate of bugfix tasks** — p=0.93 and p=0.24 against that base
-rate, so neither is distinguishable from chance at these sample sizes. Repair
-traffic does not measurably cluster behind shipped work. Note what this is not: an
-underpowered test failing to reject is weak evidence, and the game project's 1.20x
-would need roughly four times the sample before it could be called either way.
-
-**What is not good.** **15.3%** of ledgered tasks contain at least one spawn that
-died without returning a verdict — API errors, stream timeouts, kills. That is a
-floor: a spawn that died before writing its ledger row leaves no trace at all.
-
-That figure was published at 29.4% in the first draft of this section and was
-wrong. The outcome classifier matched `pending` as an infrastructure failure
-before it could match `SHIP-PENDING-RUNTIME` as a human gate, so the game
-project's most common QA verdict was scored as a dead spawn — which simultaneously
-erased the human-gate rate and doubled the apparent transport failure rate. The
-self-review gate caught it before the commit landed.
-
-## The problem
-
-You can paste the best coding guidelines into your system prompt. The LLM will read them, agree they're important, and then drift from them under complex context. An agent that writes code and reviews its own output has the same blind spots in both passes.
-
-Compare:
+MAW is a set of skills that runs a coding task through a chain of independent agents. Each agent checks the previous one's work against the actual code, not against its summary, and assumes the previous agent made mistakes. It complements prompt guidelines like Karpathy's rather than replacing them: it catches what slips through despite the rules.
 
 | Approach | How it works | Failure mode |
 |---|---|---|
-| Prompt rules (Karpathy-style) | Tell the agent "be careful" | Agent drifts from rules under complex context |
-| Self-review | Agent checks its own work | Same blind spots that caused the error review the error |
-| **MAW** | Independent agents verify against code | Reviewers get no shared conversation and verify code plus searchable evidence; the premise audit and both plan reviews are additionally isolated from prior transcripts and the log |
+| Prompt rules | Tell the agent "be careful" | The agent drifts from the rules under complex context |
+| Self-review | The agent checks its own work | The blind spots that caused the error review the error |
+| **MAW** | Independent agents verify against the code | Reviewers share no conversation with the author and check the code itself |
 
-## Architecture
-
-![MAW pipeline architecture](assets/maw_pipeline_architecture.svg)
-
-*(The diagram shows the stage flow; the provider dispatch layer — which harness runs each stage — is described under Settings below.)*
-
-Key design decisions:
-- **Fresh by default, evidence shared through the task folder** — no conversation history crosses a stage. Agents can search harness-written transcripts, reuse executable evidence in scratch, and append only decisions or dead ends to a minimal log. Native continuity exists only for same-profile timeout/transient retries and an implementer re-run after the user amends a `PLAN_BLOCKED` plan; no premise, plan, code, fixer, or QA judging role is ever continued.
-- **Adversarial by default** — each agent's prompt includes the assumption that the previous agent was unreliable. Not hostile, but skeptical.
-- **Premise challenge** — before planning, an isolated agent fed only the task and the real system (never the orchestrator's framing, the plan, or any summary) tests whether the *premise itself* is wrong, and halts to the human if it is. Every other stage verifies the solution within the premise and inherits its lineage; this is the one structural check that attacks the frame. It reduces — does not eliminate — the "pipeline faithfully executes a wrong premise" failure; the human remains the last line.
-- **Task-local state** — artifacts live in the task folder on a feature branch. Text artifacts and scratch source follow normal `maw/` persistence; privacy-sensitive transcript payloads are deliberately gitignored and rescued locally before worktree removal.
-
-## Modes
-
-Not every task needs the whole pipeline. MAW has four modes that control which part runs:
-
-| Mode | Pipeline | When to use | ~Tokens |
-|---|---|---|---|
-| `full` | Clarifier → Premise Challenge → Planner → Plan Review x2 → Implementer → Code Review → Fixer → QA | Features, migrations, auth/payments | 280–560k |
-| `small-fix` | Implementer → Code Review → Fixer → QA | Bug fixes, small changes with clear scope | 120–200k |
-| `brainstorm` | Clarifier → Premise Challenge → Planner → Plan Review x2 | Explore approaches before committing to implementation | 100–180k |
-| `deep-research` | Premise Challenge → Planner (web search) → Plan Review x2 | Research best practices, compare solutions, audit approaches | 80–150k |
-
-When you create a task, MAW analyzes the description and suggests a mode:
-
-```
-> /maw-tasks "fix 404 on the profile page"
-
-This looks like a focused bug fix with clear scope.
-Suggested mode: small-fix (Implementer → Code Review → Fixer → QA)
-
-[full] [small-fix] [brainstorm] [deep-research]
-```
-
-You confirm or override. The mode is saved in `task.md`:
-
-```markdown
-# TASK-001: Fix 404 on the profile page
-
-Type: bugfix
-Mode: small-fix
-Priority: high
-Branch: bugfix/fix-profile-404
-```
-
-`Type` is the semantic category (feature, bugfix, refactor, chore). `Mode` is which agents run. You can set mode explicitly with `/maw-tasks --mode deep-research` or change it in task.md before running `/maw-execute-task`.
-
-## Install
+## Quick start
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pockerhead/maw/main/install.sh | sh
 ```
 
-With no flags the installer detects which harnesses are present (`claude`, `codex`) and installs a surface for each. Explicit targets: `sh install.sh --claude`, `--codex`, or `--all`; add `--with-reason` for the experimental deliberation surface and `--with-hooks` for its gate. On Windows run it through Git Bash (`sh install.sh`); a native `install.ps1` twin is planned but not shipped yet.
+The installer finds `claude` and `codex` and sets MAW up for each one it finds. On Windows, run it from Git Bash. **Restart the harness afterwards**: skills and subagents are only picked up at session start.
 
-Both surfaces include `maw-execute-task/scripts/runner.sh` for external CLI stages. It shows live provider event types and tool-call activity while saving the complete JSONL stream; native Claude subagents continue through the Task tool. From PowerShell, launch shell scripts through Git's `bin/sh.exe -lc` so its Unix utilities are on PATH.
-
-When upgrading an existing installation, rerun the installer to deliver the runner as well as the updated prompts, then restart the harness. Copying only the new SKILL.md leaves external-stage preflight unable to find its helper.
-
-- **Claude Code surface**: `.claude/skills/{maw-execute-task,maw-tasks,maw-context}/` (+ raw agent bodies) and 45 named subagents in `.claude/agents/`; `--with-reason` adds the `maw-reason` skill, 6 role bodies, and 30 more subagents.
-- **Codex CLI surface**: `.agents/skills/{maw-execute-task,maw-tasks,maw-context}/` (+ raw agent bodies) — repository-scoped skills, committable, so teammates on the other harness get a working install from git without re-running the installer. `maw-reason` is Claude-only in v1.
-
-For Claude Code, add to your project's `CLAUDE.md`:
+For Claude Code, add the skills to your project's `CLAUDE.md`:
 
 ```markdown
 ## Skills
@@ -170,161 +34,89 @@ For Claude Code, add to your project's `CLAUDE.md`:
 @.claude/skills/maw-context/SKILL.md
 ```
 
-**Restart the harness after installing (or reinstalling).** Claude Code discovers the named subagents in `.claude/agents/` at session start; Codex discovers repository skills at startup — neither picks them up mid-session. Start a fresh session before invoking `/maw-execute-task`, or spawns will fail to resolve.
+Then describe the work and run it:
 
-**Invocation per harness:** in Claude Code, type the slash commands (`/maw-tasks`, `/maw-execute-task`). In Codex there are no custom slash commands — ask in words ("create a task with the maw-tasks skill", "run maw-execute-task for task 3") and the repository skill is picked up. **Codex hosting on Windows** additionally requires launching the orchestrator with the sandbox disabled (nested provider CLIs cannot reach your credentials from inside the codex sandbox, and `.git` is write-protected there); — see the Hosting section of the orchestrator skill. Note that a Codex host always loads your own `~/.codex/AGENTS.md` (an interactive session has no way to suppress it) — that is accepted: the orchestrator treats its skill contract as outranking ambient instructions, and pipeline agents never inherit them.
-
-## Usage
-
-Create tasks:
 ```
-/maw-tasks                                          # interactive intake
-/maw-tasks "description here"                       # one-shot, mode is suggested
-/maw-tasks --mode small-fix "fix 404 on profile"    # explicit mode, skips suggestion
-/maw-tasks --mode deep-research "rate limiting options"
+/maw-tasks "fix 404 on the profile page"   # MAW suggests a mode, you confirm
+/maw-execute-task                          # runs the highest-priority pending task
 ```
 
-Flags:
-- `--mode <full|small-fix|brainstorm|deep-research>` — set the MAW mode directly and skip the suggestion step. Without this flag, the skill analyzes the description and proposes a mode you can confirm or override.
+Codex has no custom slash commands, so ask in words: "run maw-execute-task for task 3".
 
-Run the pipeline:
-```
-/maw-execute-task                 # pick the highest-priority pending task
-/maw-execute-task 3               # run TASK-003 specifically (jump the queue)
-/maw-execute-task TASK-003        # same, explicit form
-/maw-execute-task --worktree      # force worktree mode for this run
-/maw-execute-task --no-worktree   # force branch-only mode for this run
-/maw-execute-task 3 --worktree    # combine: run TASK-003 in a worktree
-```
+Install flags, upgrades and Windows notes: [docs/INSTALL.md](docs/INSTALL.md). Every command and flag: [docs/USAGE.md](docs/USAGE.md).
 
-Flags:
-- `--worktree` — isolate the task in a git worktree (overrides saved setting for this run)
-- `--no-worktree` — work on a feature branch directly, no worktree (overrides saved setting for this run)
+## How it works
 
-Positional arg (task number or `TASK-NNN`): skip priority selection and run a specific task. Useful for urgent work that needs to jump the queue, or retrying a blocked task. The task must exist in `pending/` or `blocked/`.
+![MAW pipeline architecture](assets/maw_pipeline_architecture.svg)
 
-## What gets produced
+- **Fresh agents.** No conversation history crosses a stage. Evidence travels through the task folder.
+- **Adversarial by default.** Every agent assumes the previous one was unreliable. Skeptical, not hostile.
+- **Premise challenge.** Before planning, an isolated agent checks whether the task's premise itself is wrong, and stops for a human if it is.
+- **Tasks are folders.** Status is the folder a task sits in: `pending/`, `in_progress/`, `done/` or `blocked/`. Work happens on a feature branch or a git worktree.
 
-Every run leaves a full audit trail in the task folder. Artifacts depend on mode:
+Design details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**full mode:**
+## Modes
+
+Not every task needs the whole pipeline.
+
+| Mode | Stages | Use for | Tokens | Cost (Sonnet) |
+|---|---|---|---|---|
+| `full` | Clarifier → Premise Challenge → Planner → Plan Review ×2 → Implementer → Code Review → Fixer → QA | Features, migrations, auth, payments | 280–560k | $1–4 |
+| `small-fix` | Implementer → Code Review → Fixer → QA | Bug fixes with a clear scope | 120–200k | $0.5–1.5 |
+| `brainstorm` | Clarifier → Premise Challenge → Planner → Plan Review ×2 | Exploring approaches before writing code | 100–180k | $0.4–1.2 |
+| `deep-research` | Premise Challenge → Planner (web search) → Plan Review ×2 | Comparing solutions, auditing approaches | 80–150k | $0.3–1 |
+
+The rule of thumb: if shipping a bug costs more than running the pipeline, use MAW. Opus costs more; Codex stages are billed by your Codex plan. Cost details: [docs/USAGE.md](docs/USAGE.md#cost).
+
+## What you get
+
+Every run leaves an audit trail in the task folder:
+
 ```
 maw/tasks/done/TASK-001/
-├── task.md           ← original task
-├── TASK_FINAL.md     ← clarified requirements
-├── PREMISE_CHALLENGE.md ← isolated premise audit (holds / suspect, primary-source cited)
-├── PLAN.md           ← initial plan
-├── PLAN_V2.md        ← reviewed plan
-├── PLAN_FINAL.md     ← final plan after two review passes
-├── IMPL_SUMMARY.md   ← what was implemented
-├── IMPL_REVIEW.md    ← code review findings
-├── FIX_SUMMARY.md    ← what was fixed after review
-├── QA_REPORT.md      ← test results
-├── transcripts/      ← ignored, lossless harness-written spawn logs
-├── scratch/          ← persistent scripts, probes, measurements, and text evidence
-├── log.jsonl         ← append-only decisions/dead ends (pointers, not facts)
-└── metrics.md        ← per-agent tokens / tool uses / duration + task total
+├── TASK_FINAL.md          clarified requirements
+├── PREMISE_CHALLENGE.md   premise audit
+├── PLAN_FINAL.md          plan after two reviews
+├── IMPL_SUMMARY.md        what was implemented
+├── IMPL_REVIEW.md         code review findings
+├── FIX_SUMMARY.md         what was fixed
+├── QA_REPORT.md           test results
+└── metrics.md             tokens, tool uses and time per agent
 ```
 
-`metrics.md` is written by the orchestrator (not by agents — they never see it). One row per agent attempt, including retries, continuations, and re-spawns, with provider/model/effort columns; usage comes with the native completion notification or from the external CLI's JSON output. Wrap-up appends per-provider `SUBTOTAL` rows plus a `TOTAL` row (spawn count, tool uses, duration — token counts are never summed across providers). Present in every mode.
+The full list for each mode: [docs/USAGE.md](docs/USAGE.md#what-gets-produced).
 
-**small-fix:** task.md + IMPL_SUMMARY.md + IMPL_REVIEW.md + FIX_SUMMARY.md + QA_REPORT.md + transcripts/ + scratch/ + log.jsonl + metrics.md
+## Any stage on Claude or Codex
 
-**brainstorm:** task.md + TASK_FINAL.md + PREMISE_CHALLENGE.md + PLAN.md + PLAN_V2.md + PLAN_FINAL.md + transcripts/ + scratch/ + log.jsonl + metrics.md
+Each stage can have its own provider, model and effort. For example, code review on Codex while everything else runs on Claude: a reviewer from another vendor has different blind spots.
 
-**deep-research:** task.md + TASK_FINAL.md (orchestrator-written copy of task.md) + PREMISE_CHALLENGE.md + PLAN.md (research report) + PLAN_V2.md + PLAN_FINAL.md + transcripts/ + scratch/ + log.jsonl + metrics.md
-
-Transcripts are complete harness/provider captures and are never pasted into prompts; later stages receive paths and search selectively. Their `.gitignore` keeps payloads out of ordinary commits because prompts, PCTX, excerpts, and secrets may appear there. This does not protect against local disclosure, backups, or `git add -f`. Retention is unlimited in v1, so `done/` grows. Scratch persists with the task as executable coverage evidence; fixer and QA inspect it but must verify independently. `log.jsonl` accepts only `decision` and `dead_end`; entries point to evidence and are never trusted without checking refs. Premise challenge and both plan reviewers receive scratch plus append-only log access, but no transcript path and no log read. All three are absent when `shared_memory` is `false` in `maw/settings.json` (see Settings).
-
-Plus `PCTX_PROPOSALS.md` in any task where an agent proposed a project-context change (see below).
-
-Plus `OPEN_DECISIONS.md` in any task where the orchestrator hit a judgement call that blocked nothing — a scope edge, an adjacent defect, a defensible choice between two options. Rather than stopping to ask and leaving the pipeline parked, it takes the defensible option and records the call, the alternative, and what would flip it. The whole file is surfaced at wrap-up, which is where you overrule it. Present in every mode; absent when the run had no such calls.
-
-## Inline review — `/maw-selfreview` (Claude Code only)
-
-The pipeline is for work you hand over and walk away from. Most work is not that: you are in an ordinary session, you wrote something, and you are about to commit it. There you are both author and reviewer, which is not a review — you skip exactly the places you feel sure about, and you feel sure precisely where the defect is invisible to you.
-
-One spawn fixes the structure: a reviewer **on a different vendor** gets the staged diff plus the task, reads the repo, and cannot edit anything. Nine stages become one, hours become about a minute.
-
-```
-/maw-selfreview                 # review what is staged right now
-sh install.sh --claude --with-selfreview
+```json
+{
+  "agents": {
+    "code-reviewer": { "provider": "codex", "model": "gpt-6.1-sol", "effort": "xhigh" }
+  }
+}
 ```
 
-**It fires on a trigger, not on request.** The gate runs on `git commit` when the diff reaches `MAW_SELFREVIEW_LINES` (default 60) or touches a path listed in `maw/selfreview-invariants`. A review you have to remember to ask for will not happen at the moment it matters. Freshness is keyed to `sha256` of the staged diff, so editing after a review invalidates it.
+An invalid model and effort pair stops the run instead of being silently downgraded. The cross-provider path is still experimental. All settings: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
-Bypass is one variable and it is recorded: `MAW_SKIP_SELFREVIEW=1` appends to `maw/.selfreview-skips`. That is deliberate — a gate that cannot be skipped gets disabled wholesale, and the documented failure mode across the industry is `--no-verify` becoming permanent muscle memory the first time a hook is slow. The gate itself makes no model call and runs in under 300ms.
+## More skills
 
-**Findings are severity-gated so the loop terminates.** `BLOCKER` and `MAJOR` block the commit and require material evidence — a `file:line`, output of a command actually run, a named input that fails. `MINOR` and `TRACKED` are reported and never block. Convergence means *no blocking findings*, not an empty report: an adversarial reviewer always finds something, and by the fifth round it is inventing. On this project's own benchmark an adversarial checker degraded 13% of already-correct answers, so a manufactured blocker is treated as the primary failure mode rather than a nuisance.
+- **`/maw-selfreview`**: a one-stage review of your own staged diff by a different vendor, fired by a pre-commit gate. Claude Code only. [docs/SELFREVIEW.md](docs/SELFREVIEW.md)
+- **`/maw-reason`** (experimental): adversarial deliberation over a question rather than a task. Five isolated roles end in a synthesis with an explicit disagreement ledger. Claude Code only. [docs/REASON.md](docs/REASON.md)
+- **`/maw-context`**: optional project knowledge (invariants, domains, tooling) injected into the agents. [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md)
 
-It reads a diff, so it is blind to anything visual, anything about feel, and anything that only appears at runtime — and it is instructed to say so rather than invent a textual proxy.
+## What has been measured
 
-## Adversarial deliberation — `/maw-reason` (experimental, Claude Code only)
+Numbers from real use, with their caveats in [docs/RESULTS.md](docs/RESULTS.md):
 
-A third surface, beside task intake and task execution. It answers a **question** instead of running a work item: no task folder, no branch, no worktree, no status moves. Opt-in at install (`--with-reason`) because **no chain has yet been run end to end** — see the `maw-reason` rows in `docs/ACCEPTANCE.md` for what is unverified.
-
-```
-/maw-reason "should we shard this table or partition it?"
-/maw-reason --fast "..."             # lower compressor/attacker/synthesizer effort
-/maw-reason --keep "..."             # persist the trace for audit
-/maw-reason --high-assurance "..."   # two generators on distinct profiles (+1 spawn)
-/maw-reason --seed 2751937183 "..."  # reproduce a previous run's role assignment
-```
-
-**Which model plays which role is drawn, not chosen.** A standing preference — generator on claude, attacker on codex — fixes the chain's blind spot in place, where it stays invisible because it never moves. So each run draws a 32-bit seed from OS entropy, records it in `RUN.json`, and uses it to decide the provider orientation; explicit per-role pins in settings are decisions and are left alone. The seed is printed in the synthesis, so a run can be repeated identically (`--seed`) or deliberately flipped to see whether the answer survives swapping who held which role.
-
-Five spawns: **premise check → generator → compressor → attacker → synthesizer**. The compressor is what makes it a dialectic rather than an ensemble — a non-author decides which claims are load-bearing and proposes the `attack_vector`, so the attacker cannot pick its own exemption surface. The vector is a floor: an off-vector scan is mandatory.
-
-Output is a synthesis with an explicit **disagreement ledger** (unresolved conflicts stay unresolved), stated confidence tied to what survived attack, and concrete what-would-change-my-mind triggers.
-
-**The calling session does not author the chain's prompts.** It captures the question verbatim, then spawns a coordinator that cannot see the calling conversation and builds every downstream prompt itself. Your own tentative answer goes into a `CALLER_POSITION.md` that reaches the **attacker only** — not to protect it, but so it gets attacked like everything else.
-
-That invariant is narrower than it sounds, and the skill says so: the caller still writes the fact allowlist and the constraints, and the coordinator routing `CALLER_POSITION.md` correctly is an instruction, not an enforcement. What the coordinator does record is the file list and prompt hash it fed each role, so a deviation is visible after the fact. Auditable exclusion, not a mechanical seal — a real seal needs a non-LLM dispatcher.
-
-**Two effort profiles.** `deep` (default) runs the compressor and synthesizer at `medium` and the attacker at `high`; `--fast` drops them for speed. The split exists because "low is mechanical" is false for exactly two roles: the compressor decides what gets attacked and the synthesizer decides what the attack established. A `fast` run can miss a problem by never aiming at it, and no attacker effort recovers a target that was never selected — so depth is the default and speed is the flag you type. Roughly 200–350k tokens (240–420k with `--high-assurance`); the synthesis prints which profile ran so a quiet attacker can be weighed correctly.
-
-**The premise check can stop the run.** A `QUESTION SUSPECT` verdict halts the chain after one spawn and hands the human the specific mis-posing plus a proposed reframing. The reframing is a proposal, never a substitution: proceed on the original question (`--force-premise`), restart with a reworded one, or drop it. Catching a badly posed question costs one spawn here and four downstream.
-
-### The gate hook
-
-A simulated chain and a real one look identical in their output text — that is what makes this surface different from the task pipeline, where a missing implementation is visible in the diff. `install.sh --claude --with-hooks` adds a `Stop` hook that blocks the turn unless the run's own manifest is satisfied: every expected artifact present and newer than the question, and a ledger with the expected number of distinct successful role spawns. It reads `RUN.json`, so a five-spawn run cannot pass as a claimed `--high-assurance` one.
-
-The hook raises the cost of faking a chain from "write some prose" to "fabricate a consistent evidence set on purpose". A model that can write files can still forge all of it. It is not a security boundary, and describing it as one would be the same overclaim the chain exists to catch — what it does is turn an accidental shortcut into a deliberate lie.
-
-## Project context overlay
-
-The base pipeline is 100% generic — it contains no knowledge of your project. Project-specific knowledge lives in `maw/project-context/`, authored with `/maw-context`.
-
-```
-/maw-context            # scaffold, or add an invariant / domain / lesson / tool
-/maw-context --review   # fold pending agent proposals into the overlay
-```
-
-If `maw/project-context/` does not exist, the pipeline behaves byte-for-byte as with no overlay — this is the default and requires nothing. If it exists, three tiers are injected, each gated on a different axis:
-
-- `README.md` — **constant**, into every agent every stage. Only what is true regardless of subsystem or stage: a short orientation, universal invariants, and a **domain catalog** (observable `trigger → domains/<name>.md` lines plus a hard rule to self-load a module on a matching trigger). Bounded by domain count, not free — kept disciplined.
-- `domains/<name>.md` — **domain-gated**, normative. Injected into every running stage (planner and reviewers included — planning correctness needs it) when the task is in that domain. It gets there two ways: pre-injected because `task.md` declared `Domains:` (a recorded decision `/maw-tasks` proposes and the user confirms), or self-loaded when an agent hits an observable catalog trigger a task did not predict (the recall safety net). Subsystem invariants, risk lessons, and pointers to bulky docs live here.
-- `agents/<stem>.md` — **stage-gated**, into one agent only. Build/test/runtime-QA tooling and stage skills — clarifier and planners do not carry tooling they never use.
-
-A native named subagent starts with a fresh conversation and no parent history, but it does receive the loaded `CLAUDE.md` hierarchy, memory, and a git-status snapshot. The parent's task artifacts, PCTX overlay, and conversation still do not reach it, so dynamic inputs must be injected or read from explicit disk paths; `@`-imports are not a task-context transport. External spawns retain explicit ambient-context suppression. Project context is normative as **law to satisfy, not a claim to audit** — review agents verify the code satisfies it; whether the law itself is right is human-gated via `/maw-context --review`. Agents never edit the overlay: they append dated entries to that task's `PCTX_PROPOSALS.md`, folded in deliberately.
-
-This is reduced, human-authored machinery — a hand-written catalog and human-declared `Domains:`, no resolution engine, no token-budget gate, no includes. The base change is the orchestrator plus the `maw-context`/`maw-tasks` skills; the overlay seam never modifies the agent prompts.
-
-What these overlays turn into after a year of real use — including why nearly
-every invariant in them is a fossilised bug report rather than a design document,
-and why the two projects examined differ by a factor of six in size for no reason
-connected to codebase size — is written up in
-[`docs/PROJECT_CONTEXT_FIELD_NOTES.md`](docs/PROJECT_CONTEXT_FIELD_NOTES.md).
-Nothing there measures whether the overlay improves outcomes; `maw-context` has
-no acceptance rows and no controlled comparison, which stays open work.
-
-## Roadmap graph
-
-`maw/ROADMAP.md` is an auto-maintained dependency view of the pending task board, derived from the `## Dependencies` section of each `task.md` (`task.md` is the source of truth — the graph is never authoritative). `/maw-tasks` regenerates it on every task create/edit; `/maw-execute-task` reconciles it against the task files before starting and drops the started task out of the pending graph. It is a short tree of hard blockers plus a list of soft orderings and unblocks — structure only, no narrative. Optional: absence is not an error, and projects that never declare dependencies never get one.
+- **A review stage objected in 39.3% of tasks** where one returned a verdict (70 of 178).
+- **The fixer needed a second round in 5.3% of tasks** (9 of 169), so review rarely turns into a loop.
+- **SWE-bench Multilingual: 7 resolved out of 12 instances run**, on Sonnet in `small-fix` mode. There is no same-model single-agent baseline, so this is a data point, not a claim of superiority.
+- **15.3% of tasks had at least one spawn die** without a verdict (API errors, timeouts, kills).
 
 ## How it compares
-
-The adversarial multi-agent space is growing. Several tools take different slices of the problem:
 
 | | MAW | Claude Forge | adversarial-dev | Forge AI | adversarial-review (ng) |
 |---|---|---|---|---|---|
@@ -335,81 +127,7 @@ The adversarial multi-agent space is growing. Several tools take different slice
 | Provider | Claude Code + Codex CLI (per-stage) | Claude Code | Claude SDK + Codex SDK | Claude/Codex/Cursor/API | Claude Code |
 | Install | One curl | cp -r | git clone + pip | pip install | /plugin marketplace |
 
-MAW's specific niche: full lifecycle with built-in task tracking, mode-based cost control, and per-stage provider assignment (e.g. cross-vendor code review). If you need only code review, ng/adversarial-review is more focused.
-
-## Cost and when to use
-
-MAW trades tokens for reliability. Token consumption depends on mode:
-
-| Mode | Tokens | Cost (Sonnet) |
-|---|---|---|
-| full | 280–560k | $1–4 |
-| small-fix | 120–200k | $0.5–1.5 |
-| brainstorm | 100–180k | $0.4–1.2 |
-| deep-research | 80–150k | $0.3–1 |
-
-Each agent consumes 40–70k tokens on a medium-sized codebase. Implementer and Code Review can exceed 100k on complex tasks. At Opus pricing, multiply accordingly.
-
-Every spawn also carries a fixed shared-memory path/access block (larger for the six full-access roles). Its real token impact is measured from per-run metrics rather than estimated here.
-
-Codex-provider stages are billed per your Codex auth mode (ChatGPT plan quota or API-key tokens) — the table above prices Claude tokens only; `metrics.md` keeps per-provider subtotals and never sums tokens across providers.
-
-The tradeoff: if the cost of shipping a bug exceeds the cost of running the pipeline, use MAW. Modes let you pick the right level of rigor per task instead of paying for the full pipeline every time.
-
-## Settings
-
-First run asks two things, both saved to `maw/settings.json`.
-
-**Branching** (`worktree_mode`):
-
-| Value | Behavior |
-|---|---|
-| `always` | Git worktree per task (default) |
-| `never` | Feature branch only |
-| `ask` | Prompt each time |
-
-**Agent provider, model, and effort.** Every agent resolves an atomic profile `(provider, model, effort)`. Zero-config default: every agent runs on the host harness's provider with that provider's defaults (`claude: sonnet/medium`, `codex: gpt-6.1-sol/medium`). On the Claude-native path, effort is a **real Claude Code effort level** baked into each generated subagent variant (`maw-<stem>-<effort>` in `.claude/agents/`) and model is the Task tool's `model` parameter; on the external path (cross-provider stages, or a Codex host) both are CLI flags on a one-shot headless spawn.
-
-```json
-{
-  "worktree_mode": "always",
-  "default_provider": "host",
-  "providers": {
-    "claude": { "default_model": "sonnet",      "default_effort": "medium" },
-    "codex":  { "default_model": "gpt-6.1-sol", "default_effort": "medium" }
-  },
-  "agents": {
-    "code-reviewer": { "provider": "codex", "model": "gpt-6.1-sol", "effort": "xhigh" },
-    "planner":       { "model": "opus" }
-  }
-}
-```
-
-(Legacy v1 settings — `agent_model`/`agent_effort` + override maps — are migrated automatically on first run, preserving behavior. Other keys: `spawn_timeout_min` — wall-clock cap per external spawn, default 30; `allow_unverified_profile` — pass unknown models through with a warning instead of rejecting, default false; `auto_invoke_guard` — per-skill map gating model-chosen invocation, e.g. `{ "maw-execute-task": true }`, values `true` (confirm first, default when absent) | `false` (unattended) | `"never"` (decline).)
-
-**Spending fewer tokens.** Two optional keys, both default `true`:
-
-```json
-{ "shared_memory": false, "runner_progress": false }
-```
-
-`shared_memory: false` turns off `transcripts/`, `scratch/`, and `log.jsonl` for the whole run: nothing is scaffolded or harvested, the log is not validated, and every stage gets a one-line "disabled" notice instead of the shared-memory block. Stages go back to seeing only the task artifacts, so a fixer or QA no longer learns what earlier stages already tried. `runner_progress: false` makes the external runner print only its start and exit lines; the full event stream is still captured to disk.
-
-Agent names: `clarifier`, `premise-challenge`, `planner`, `plan-reviewer-1`, `plan-reviewer-2`, `implementer`, `code-reviewer`, `fixer`, `qa`. Models are provider-scoped — claude: `sonnet`, `opus`, `haiku`, `fable`; codex: `gpt-6-astra` (OpenAI premium tier), `gpt-6.1-sol`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5` (retires 2026-10-14). Effort: `low`, `medium`, `high`, `xhigh`, `max` (plus `ultra` on codex Astra, the Sol models, and `gpt-5.6-terra`; never Luna). Effort validity depends on the model (claude `haiku` caps at `high`; codex `gpt-5.5` caps at `xhigh`) — the orchestrator clamps against its versioned capability catalog and **stops with a report on an invalid pair; nothing silently downgrades**. Edit `maw/settings.json` directly to change the defaults later.
-
-**Cross-provider agents (experimental).** Any pipeline stage can run on a different harness than the orchestrator — e.g. code review on Codex while everything else runs on Claude. A cross-vendor reviewer brings a genuinely different prior, so its blind spots correlate less with the implementer's. External spawns are one-shot headless CLI runs with ambient-context isolation (the child loads neither the project's AGENTS.md/CLAUDE.md nor your personal one — for codex that takes a private per-spawn `CODEX_HOME` holding only a copy of `auth.json`, since no CLI flag suppresses `~/.codex/AGENTS.md`; suppression is canary-tested per machine as part of preflight), a fresh context, and per-spawn usage accounting where the CLI provides it (codex: yes; claude external: pending fixture — recorded as `n/a` until then). The external path uses the installed `maw-execute-task/scripts/runner.sh` to capture output and show live event/tool-call activity. It uses POSIX sh and standard shell utilities (Git Bash on Windows), with no extra language runtime or platform binaries. The host still owns process-tree timeouts, JSON validation, and transcript retention. Requirements: the other CLI installed and logged in; the orchestrator preflights binary, auth, and a transport probe before a task leaves `pending/`. Token subtotals in `metrics.md` are per-provider — cross-provider counts are never summed (different tokenizers). **Status:** the cross-provider and Codex-host paths are experimental until the acceptance checklist in `docs/ACCEPTANCE.md` is green. Newly specified native shared-memory mechanisms—transcript harvest and `SendMessage` continuation—also remain RED until live runs exercise them, alongside the existing deep-research fallback and local-only worktree copy-back rows.
-
-`gpt-6-astra` is the OpenAI premium option; selecting it at any effort uses the existing one-time premium-cost confirmation, as do Claude `fable` and Codex `ultra`. A profile already approved for this task does not require another confirmation. The default is `gpt-6.1-sol/medium`; it needs codex CLI ≥ 0.159.1. On an older CLI, update it or set `gpt-6-sol` explicitly.
-
-**Per-task override.** A task can override all three via optional `task.md` header lines, which beat `settings.json` for that task only:
-
-```markdown
-Providers: code-reviewer=codex
-Models: default=opus, code-reviewer=gpt-6.1-sol
-Effort: code-reviewer=xhigh, qa=high
-```
-
-Each line is comma-separated tokens: `default=<v>` sets the task-wide value, `<agent>=<v>` sets one agent. An explicit per-agent value that contradicts the resolved provider (e.g. `Providers: code-reviewer=codex` + `Models: code-reviewer=opus`) is a hard stop, not a silent substitution; inherited task-wide values simply don't apply to agents on another provider. When you create a task with `/maw-tasks`, MAW may itself propose reinforcing specific agents (stronger model / higher effort / cross-provider review) for risky tasks — auth, payments, migrations, concurrency — which you confirm, edit, or decline. Resolution precedence: task.md per-agent → task.md task-wide → settings.json `agents` → settings.json defaults → built-in.
+MAW's niche is the full lifecycle with built-in task tracking, mode-based cost control and per-stage providers. If you only need code review, ng/adversarial-review is more focused.
 
 ## License
 

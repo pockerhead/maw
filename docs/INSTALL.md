@@ -8,10 +8,10 @@ With no flags the installer detects which harnesses are present (`claude`, `code
 
 Both surfaces include `maw-execute-task/scripts/runner.sh` for external CLI stages. It shows live provider event types and tool-call activity while saving the complete JSONL stream; native Claude subagents continue through the Task tool. From PowerShell, launch shell scripts through Git's `bin/sh.exe -lc` so its Unix utilities are on PATH.
 
-When upgrading an existing installation, rerun the installer to deliver the runner as well as the updated prompts, then restart the harness. Copying only the new SKILL.md leaves external-stage preflight unable to find its helper.
+When upgrading an existing installation, rerun the installer to deliver the runner as well as the updated prompts, then restart the harness. Or ask the agent to "update MAW": the `maw-update` skill detects which surfaces and options are installed, reruns the installer with the same flags, and reports what changed. Copying only the new SKILL.md leaves external-stage preflight unable to find its helper.
 
-- **Claude Code surface**: `.claude/skills/{maw-execute-task,maw-tasks,maw-context}/` (+ raw agent bodies) and 45 named subagents in `.claude/agents/`; `--with-reason` adds the `maw-reason` skill, 6 role bodies, and 30 more subagents.
-- **Codex CLI surface**: `.agents/skills/{maw-execute-task,maw-tasks,maw-context}/` (+ raw agent bodies) — repository-scoped skills, committable, so teammates on the other harness get a working install from git without re-running the installer. `maw-reason` is Claude-only in v1.
+- **Claude Code surface**: `.claude/skills/{maw-execute-task,maw-tasks,maw-context,maw-update}/` (+ raw agent bodies) and 45 named subagents in `.claude/agents/`; `--with-reason` adds the `maw-reason` skill, 6 role bodies, and 30 more subagents.
+- **Codex CLI surface**: `.agents/skills/{maw-execute-task,maw-tasks,maw-context,maw-update}/` (+ raw agent bodies) — repository-scoped skills, committable, so teammates on the other harness get a working install from git without re-running the installer. `maw-reason` is Claude-only in v1.
 
 For Claude Code, add to your project's `CLAUDE.md`:
 
@@ -20,6 +20,7 @@ For Claude Code, add to your project's `CLAUDE.md`:
 @.claude/skills/maw-execute-task/SKILL.md
 @.claude/skills/maw-tasks/SKILL.md
 @.claude/skills/maw-context/SKILL.md
+@.claude/skills/maw-update/SKILL.md
 ```
 
 **Restart the harness after installing (or reinstalling).** Claude Code discovers the named subagents in `.claude/agents/` at session start; Codex discovers repository skills at startup — neither picks them up mid-session. Start a fresh session before invoking `/maw-execute-task`, or spawns will fail to resolve.

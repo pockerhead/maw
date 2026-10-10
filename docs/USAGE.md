@@ -57,6 +57,13 @@ Flags:
 
 Positional arg (task number or `TASK-NNN`): skip priority selection and run a specific task. Useful for urgent work that needs to jump the queue, or retrying a blocked task. The task must exist in `pending/` or `blocked/`.
 
+Update MAW itself:
+```
+/maw-update                       # or just say "update MAW"
+```
+
+It reruns the installer with the surfaces and options already installed (so `maw-reason` and `maw-selfreview` stay), asks first if installed MAW files have uncommitted local edits, and reports the upstream commit and what changed. `maw/` is never touched. Restart the harness afterwards.
+
 ## What gets produced
 
 Every run leaves a full audit trail in the task folder. Artifacts depend on mode:

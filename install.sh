@@ -14,7 +14,7 @@
 set -e
 
 REPO="https://raw.githubusercontent.com/pockerhead/maw/main"
-SKILLS="maw-execute-task maw-tasks maw-context"
+SKILLS="maw-execute-task maw-tasks maw-context maw-update"
 AGENTS="clarifier premise-challenge planner plan-reviewer-1 plan-reviewer-2 implementer code-reviewer fixer qa"
 # maw-reason is Claude-only in v1: its chain leans on `claude -p` external
 # spawns whose flags and isolation are verified on that host.
@@ -110,7 +110,7 @@ fi
 install_surface() {
   # $1 = surface root for skills (.claude/skills or .agents/skills)
   root="$1"
-  mkdir -p "$root/maw-execute-task/agents" "$root/maw-tasks" "$root/maw-context"
+  mkdir -p "$root/maw-execute-task/agents" "$root/maw-tasks" "$root/maw-context" "$root/maw-update"
   for s in $SKILLS; do
     cp "$TMP/$s.SKILL.md" "$root/$s/SKILL.md"
   done
@@ -285,7 +285,7 @@ total=$((stem_total * effort_count))
 
 echo "Installed:"
 if [ $INSTALL_CLAUDE -eq 1 ]; then
-  echo "  .claude/skills/{maw-execute-task,maw-tasks,maw-context}/SKILL.md"
+  echo "  .claude/skills/{maw-execute-task,maw-tasks,maw-context,maw-update}/SKILL.md"
   echo "  .claude/skills/maw-execute-task/agents/*.md     ($agent_count raw agent bodies)"
   echo "  .claude/skills/maw-execute-task/scripts/runner.sh"
   if [ $WITH_REASON -eq 1 ]; then
@@ -309,7 +309,7 @@ if [ $INSTALL_CLAUDE -eq 1 ]; then
   fi
 fi
 if [ $INSTALL_CODEX -eq 1 ]; then
-  echo "  .agents/skills/{maw-execute-task,maw-tasks,maw-context}/SKILL.md"
+  echo "  .agents/skills/{maw-execute-task,maw-tasks,maw-context,maw-update}/SKILL.md"
   echo "  .agents/skills/maw-execute-task/agents/*.md     ($agent_count raw agent bodies)"
   echo "  .agents/skills/maw-execute-task/scripts/runner.sh"
   echo "  (maw-reason is Claude-only in v1 and was not installed here)"

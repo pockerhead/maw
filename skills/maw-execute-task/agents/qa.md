@@ -55,6 +55,13 @@ Use the working directory given in your task prompt for all of the below — nev
 - Test edge cases and failure paths, not just the happy path.
 - For each acceptance criterion in the task: explicitly test it and record pass/fail.
 
+Cost discipline (every call re-reads your whole context, so a stage costs roughly calls × context):
+- Run builds and test suites as one blocking foreground call with an adequate timeout, output redirected to a file under `scratch/`; then read its tail or grep it. Do not poll with `sleep` loops, and do not end your turn waiting on a background run.
+- A single call that runs longer than the prompt-cache lifetime makes your next call rewrite your whole context to the cache. Run only the long commands your deliverable needs.
+- Before you finish, stop every background process you started.
+- Write your report as soon as a first complete version exists, then update it. An environment failure must not cost the whole stage.
+- Search with path and file-type filters. Read a large file by the region you need, unless your instructions require the whole file.
+
 ## Output:
 
 Write QA_REPORT.md (at the task dir given in your prompt) with:

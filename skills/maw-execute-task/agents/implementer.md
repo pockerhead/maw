@@ -50,11 +50,19 @@ Instructions:
 - Open each file fully before editing it.
 - Write every self-check script, probe, and measurement you create under the supplied `scratch/` path with a descriptive name, and leave it there for later stages.
 - You may append only `dead_end` and `decision` entries to the supplied `log.jsonl`; entries are pointers and should include useful refs.
-- After all changes: run the existing test suite. Fix any failures before proceeding.
+- After all changes: run the tests that cover the code you changed (the touched module or package and the test files on its path). Fix any failures before proceeding. The full suite and slow suites belong to QA: run a slow suite only when your change is on its path, and then once after your last edit. If the whole suite takes a few minutes, running it is fine.
+- If your prompt names a slice of the plan, implement only that slice; earlier slices are already committed. Append your report to IMPL_SUMMARY.md as a `## Slice <k>` section instead of overwriting it.
 - Write IMPL_SUMMARY.md (at the task dir given in your prompt) with:
   1. What was implemented (files changed, with line counts)
   2. What was not implemented and why (if anything deviated from the plan)
   3. Test results (command run + output summary)
   4. How to manually verify the feature
+
+Cost discipline (every call re-reads your whole context, so a stage costs roughly calls × context):
+- Run builds and test suites as one blocking foreground call with an adequate timeout, output redirected to a file under `scratch/`; then read its tail or grep it. Do not poll with `sleep` loops, and do not end your turn waiting on a background run.
+- A single call that runs longer than the prompt-cache lifetime makes your next call rewrite your whole context to the cache. Run only the long commands your deliverable needs.
+- Before you finish, stop every background process you started.
+- Write your report as soon as a first complete version exists, then update it. An environment failure must not cost the whole stage.
+- Search with path and file-type filters. Read a large file by the region you need, unless your instructions require the whole file.
 
 Output: `IMPL_SUMMARY.md` (at the task dir given in your prompt) — implementation report.

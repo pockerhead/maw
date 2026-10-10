@@ -37,4 +37,11 @@ Instructions:
   4. **Missing coverage** — test cases that should exist but don't
   5. **Nits** — minor style/clarity issues (optional section)
 
+Cost discipline (every call re-reads your whole context, so a stage costs roughly calls × context):
+- Run builds and test suites as one blocking foreground call with an adequate timeout, output redirected to a file under `scratch/`; then read its tail or grep it. Do not poll with `sleep` loops, and do not end your turn waiting on a background run.
+- A single call that runs longer than the prompt-cache lifetime makes your next call rewrite your whole context to the cache. Run only the long commands your deliverable needs.
+- Before you finish, stop every background process you started.
+- Write your report as soon as a first complete version exists, then update it. An environment failure must not cost the whole stage.
+- Search with path and file-type filters. Read a large file by the region you need, unless your instructions require the whole file.
+
 Output: `IMPL_REVIEW.md` (at the task dir given in your prompt) — code review with verdict.

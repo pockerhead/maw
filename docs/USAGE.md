@@ -106,6 +106,8 @@ Each agent consumes 40–70k tokens on a medium-sized codebase. Implementer and 
 
 Every spawn also carries a fixed shared-memory path/access block (larger for the six full-access roles). Its real token impact is measured from per-run metrics rather than estimated here.
 
+On long tasks most of the cost is prompt-cache reads: a stage costs about its calls times its context, and a wait longer than the cache lifetime rewrites the whole context. Three things matter most. Set `"subagentPromptCacheTtl": "1h"` in `~/.claude/settings.json`. Let the orchestrator slice a long plan into fresh implementers. Leave the full and slow test suites to QA. The orchestrator's Cost discipline section has the measured numbers.
+
 Codex-provider stages are billed per your Codex auth mode (ChatGPT plan quota or API-key tokens) — the table above prices Claude tokens only; `metrics.md` keeps per-provider subtotals and never sums tokens across providers.
 
 The tradeoff: if the cost of shipping a bug exceeds the cost of running the pipeline, use MAW. Modes let you pick the right level of rigor per task instead of paying for the full pipeline every time.

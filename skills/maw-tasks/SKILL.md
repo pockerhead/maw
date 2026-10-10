@@ -280,5 +280,6 @@ maw/tasks/
 - Never modify existing tasks — only append new ones.
 - Keep the tone efficient. This is intake, not planning.
 - If the user describes something that's clearly multiple tasks, suggest splitting and ask.
+- Exception: a series of steps that share one plan and only make sense together is one task, not several. The orchestrator implements a long plan in slices with fresh implementers, and code review, fixer, and QA then run once over the whole series, which also catches defects on the seams between steps. Split into separate tasks only when a step has to be tracked, deferred, or blocked on its own.
 - In git-tracked mode, always commit after creating tasks — this is critical for worktree-based workflows.
 - In local-only mode (`maw/` in `.gitignore`), never commit task files or MAW artifacts.

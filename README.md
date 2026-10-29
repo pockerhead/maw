@@ -5,6 +5,8 @@
   </picture>
 </p>
 
+<p align="center"><b>English</b> · <a href="README.ru.md">Русский</a></p>
+
 # MAW — Multi-Agent Workflow for Claude Code & Codex CLI
 
 **Prompt rules tell an LLM what to do. MAW adds a verification layer for when it doesn't listen.**

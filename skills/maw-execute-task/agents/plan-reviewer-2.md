@@ -29,12 +29,27 @@ Instructions:
 - Check for: anything the plan still got wrong, steps that will break existing functionality, missing test coverage in the plan, deployment or migration concerns.
 - Write PLAN_FINAL.md (at the task dir given in your prompt) — the definitive implementation plan.
 
+Absence findings in the plan under review: if it has an `## Absence check` table, check every `finding` row against the code. The diagnosis and the change it prescribes are separate claims: a real omission can come with a wrong fix (one that would break correct production cases or duplicate an existing step). Keep the diagnosis if it holds and re-derive the change yourself.
+
+Your own absence check (the section is mandatory, a finding is not):
+Checking claims catches what the plan states wrongly. This step looks for what the plan leaves out: a site, case, or operation that is missing while the plan still looks complete. Use at least one method:
+- Set difference. Where an independent enumeration exists (call sites of a changed symbol, enum variants, registry entries, routes, migrations, config keys, declared operations), build it yourself from the code, not from the plan's list, and diff it against what the plan covers. Put the command in the table and save its output under the supplied `scratch/` path.
+- Concrete counterexample. Name one minimal deletion or mutation that the plan's checks and tests would let through while behaviour is wrong (for example: one declared operation removed, one argument swapped). Trace it through the code to `file:line`.
+Only traceable output counts; do not write a "suppose it already failed in production" story. An empty result is valid ("diffed X against Y, nothing missing"); do not invent a finding to fill the section. If neither method applies (a research report with nothing to enumerate), say so in one row.
+Evidence gate: an absence finding may change the plan only with code-level evidence — a `file:line` pair, a set-difference output, or a probe result. Without it, note it in Review notes as an uncertain concern.
+
 PLAN_FINAL.md format:
 1. **Summary** — one paragraph: what will be built and how
 2. **Implementation steps** — ordered, specific, complete. Each step: file path, exact change, reason.
 3. **Test plan** — what to test, how, expected outcomes
 4. **Rollout notes** — migrations, env vars, feature flags, backward compat concerns
 5. **Review notes** — what was changed from the prior plan and why
+6. **Absence outcomes** — a `## Absence outcomes` table with one row per `finding` row of the plan under review (omit the section if it has none):
+   `| source id | outcome | evidence |`
+   Outcome is one of `confirmed`, `disputed-with-evidence`, `mechanism-corrected` (the omission is real, its cause was misdescribed), `prescription-recomputed` (the omission is real, its fix was wrong and you replaced it), `not-addressed`.
+7. **Absence check** — your own `## Absence check` table, one row per check:
+   `| id | method (set-diff / counterexample) | list or mutation (command or scratch path) | result (empty / finding) | evidence (file:line) | blocking (y/n) | escaped_from (TASK-NNN or —) |`
+   Ids are `A1`, `A2`, … `escaped_from` names an earlier task when the finding is a defect already shipped there.
 
 This document must be unambiguous — anyone reading it should be able to execute it without guessing.
 

@@ -21,12 +21,17 @@ comply.
 Instructions:
 - For each issue in the review: open the referenced file and check whether the issue is real.
 - Fix issues you agree with. Skip issues that are wrong or irrelevant — but document why you skipped them.
+- A suggested fix is not binding. The diagnosis can be right while the prescribed fix is wrong. Re-derive the fix from the defect. When the suggestion adds a check, gate, or assertion, first confirm it passes on the correct production cases it covers and fails on the defect; if it fails on correct code, replace it and say so.
+- If the review has an `## Absence check` table, give every `finding` row an outcome (see FIX_SUMMARY.md below).
 - You may write your own probes under `scratch/` and append only `dead_end` or `decision` entries to `log.jsonl`.
 - After fixes: run the tests that cover the code you changed. Fix any new failures. The full suite and slow suites belong to QA: run a slow suite only when your fix is on its path, and then once after your last edit.
 - Write FIX_SUMMARY.md (at the task dir given in your prompt) with:
   1. **Fixed** — each issue addressed (review item -> what was done)
   2. **Skipped** — each issue not addressed and why
   3. **Test results** — command + output
+  4. **Absence outcomes** — a `## Absence outcomes` table with one row per `finding` row of the review's `## Absence check` (omit the section if it has none):
+     `| source id | outcome | evidence |`
+     Outcome is one of `confirmed`, `disputed-with-evidence`, `mechanism-corrected` (the omission is real, its cause was misdescribed), `prescription-recomputed` (the omission is real, the suggested fix was wrong and you replaced it), `not-addressed`.
 
 Cost discipline (every call re-reads your whole context, so a stage costs roughly calls × context):
 - Run builds and test suites as one blocking foreground call with an adequate timeout, output redirected to a file under `scratch/`; then read its tail or grep it. Do not poll with `sleep` loops, and do not end your turn waiting on a background run.

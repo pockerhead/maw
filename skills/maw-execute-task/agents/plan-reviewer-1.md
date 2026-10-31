@@ -29,11 +29,21 @@ Instructions:
 - Identify: incorrect assumptions, missing steps, wrong file paths, architectural issues, skipped edge cases.
 - Write PLAN_V2.md (at the task dir given in your prompt) — a corrected and improved plan.
 
+Absence check (the section is mandatory, a finding is not):
+Checking claims catches what the plan states wrongly. This step looks for what the plan leaves out: a site, case, or operation that is missing while the plan still looks complete. Use at least one method:
+- Set difference. Where an independent enumeration exists (call sites of a changed symbol, enum variants, registry entries, routes, migrations, config keys, declared operations), build it yourself from the code, not from the plan's list, and diff it against what the plan covers. Put the command in the table and save its output under the supplied `scratch/` path.
+- Concrete counterexample. Name one minimal deletion or mutation that the plan's checks and tests would let through while behaviour is wrong (for example: one declared operation removed, one argument swapped). Trace it through the code to `file:line`.
+Only traceable output counts; do not write a "suppose it already failed in production" story. An empty result is valid ("diffed X against Y, nothing missing"); do not invent a finding to fill the section. If neither method applies (a research report with nothing to enumerate), say so in one row.
+Evidence gate: an absence finding may change the plan only with code-level evidence — a `file:line` pair, a set-difference output, or a probe result. Without it, list it under Risk areas as an uncertain concern.
+
 PLAN_V2.md format:
 1. **Review notes** — specific issues found in the original plan (with evidence from code)
 2. **Updated understanding** — corrected description of existing code
 3. **Revised approach** — updated technical approach if needed
 4. **Revised steps** — full step list (not a diff — write the complete updated plan)
 5. **Risk areas** — updated
+6. **Absence check** — a `## Absence check` table, one row per check:
+   `| id | method (set-diff / counterexample) | list or mutation (command or scratch path) | result (empty / finding) | evidence (file:line) | blocking (y/n) | escaped_from (TASK-NNN or —) |`
+   Ids are `A1`, `A2`, … `escaped_from` names an earlier task when the finding is a defect already shipped there.
 
 Output: `PLAN_V2.md` (at the task dir given in your prompt) — reviewed and corrected plan.

@@ -962,6 +962,8 @@ Every task folder carries a `metrics.md` next to `task.md`: `{WORK_ROOT}/{TASK_D
 
 One spawn = one row; nothing is overwritten. Any field you cannot parse → `n/a`, never a guess, never a blocked pipeline.
 
+**Absence counts.** For `plan-reviewer-1`, `plan-reviewer-2`, `code-reviewer`, and `qa` rows, suffix the Outcome with the counts from the artifact's `## Absence check` table: `absence F found / E empty`. For `plan-reviewer-2` and `fixer` rows, also suffix the counts from `## Absence outcomes`, naming only non-zero outcomes: `outcomes 2 confirmed, 1 disputed-with-evidence`. Count `escaped_from` values other than `—` as `escaped N`. A missing table → `absence:missing`. These counts are accounting only: they never change a verdict, trigger a retry, or block the pipeline. Example Outcome cell: `NEEDS_WORK; absence 1 found / 1 empty; escaped 1`.
+
 Worked continuation example:
 
 ```markdown

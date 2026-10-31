@@ -55,6 +55,13 @@ Use the working directory given in your task prompt for all of the below — nev
 - Test edge cases and failure paths, not just the happy path.
 - For each acceptance criterion in the task: explicitly test it and record pass/fail.
 
+Absence check (the section is mandatory, a finding is not):
+Testing the criteria catches what the feature does wrong. This step looks for what the change and its tests leave out: a site, case, or operation that is missing while every test is green. Use at least one method:
+- Set difference. Where an independent enumeration exists (call sites of a changed symbol, enum variants, registry entries, routes, migrations, config keys, declared operations), build it yourself from the code with your own command, not from an author's list, and diff it against what the implementation and its tests cover. Put the command in the table and save its output under the supplied `scratch/` path.
+- Concrete counterexample. Name one minimal deletion or mutation that would leave the tests and gates green while behaviour is wrong (for example: one declared operation removed, one argument swapped). Apply it to a scratch copy, or to the working tree and revert it right after the run, run the checks, and record the result.
+Only traceable output counts; do not write a "suppose it already failed in production" story. An empty result is valid ("diffed X against Y, nothing missing"); do not invent a finding to fill the section.
+Evidence gate: an absence finding may drive NEEDS_FIXES or REJECT only with code-level evidence — a `file:line` pair, a set-difference output, or a probe or mutation result. Without it, record it under Bugs found as an uncertain concern; it does not change the verdict.
+
 Cost discipline (every call re-reads your whole context, so a stage costs roughly calls × context):
 - Run builds and test suites as one blocking foreground call with an adequate timeout, output redirected to a file under `scratch/`; then read its tail or grep it. Do not poll with `sleep` loops, and do not end your turn waiting on a background run.
 - A single call that runs longer than the prompt-cache lifetime makes your next call rewrite your whole context to the cache. Run only the long commands your deliverable needs.
@@ -69,7 +76,10 @@ Write QA_REPORT.md (at the task dir given in your prompt) with:
 2. **Test results** — existing suite results + new tests written + results
 3. **Acceptance criteria** — table: criterion | test performed | result (PASS/FAIL)
 4. **Bugs found** — each bug: severity, reproduction steps, expected vs actual behavior
-5. **Verdict** — SHIP / NEEDS_FIXES / REJECT with reasoning
+5. **Absence check** — a `## Absence check` table, one row per check:
+   `| id | method (set-diff / counterexample) | list or mutation (command or scratch path) | result (empty / finding) | evidence (file:line) | blocking (y/n) | escaped_from (TASK-NNN or —) |`
+   Ids are `A1`, `A2`, … `escaped_from` names an earlier task when the finding is a defect already shipped there.
+6. **Verdict** — SHIP / NEEDS_FIXES / REJECT with reasoning
 
 ## Cleanup:
 

@@ -30,12 +30,24 @@ Instructions:
 - Check against the plan (or the spec, if there is no plan) — did the implementation actually follow it?
 - Look for: bugs, missed edge cases, security issues, performance problems, unclear code, missing error handling, insufficient tests.
 - Do NOT edit project files or fix the implementation. Writes are limited to `IMPL_REVIEW.md`, supplied `scratch/`, and append-only `log.jsonl` entries.
+- A suggested fix is a hint for the fixer, not an order. Describe the defect precisely enough that the fix can be re-derived without your suggestion.
+
+Absence check (the section is mandatory, a finding is not):
+Checking claims catches what the code does wrong. This step looks for what the change leaves out: a site, case, or operation that is missing while the diff, its tests, and its gates still look complete. Use at least one method:
+- Set difference. Where an independent enumeration exists (call sites of a changed symbol, enum variants, registry entries, routes, migrations, config keys, declared operations), build it yourself from the code, not from the author's list, and diff it against what the diff and its tests cover. Put the command in the table and save its output under the supplied `scratch/` path.
+- Concrete counterexample. Name one minimal deletion or mutation that would leave the tests and gates green while behaviour is wrong (for example: one declared operation removed, one argument swapped). Trace it through the code to `file:line`, or apply it to a scratch copy, run the check, and record the result.
+Only traceable output counts; do not write a "suppose it already failed in production" story. An empty result is valid ("diffed X against Y, nothing missing"); do not invent a finding to fill the section.
+Evidence gate: an absence finding may drive NEEDS_WORK or FAIL only with code-level evidence — a `file:line` pair, a set-difference output, or a probe or mutation result. Without it, list it under Issues as minor and uncertain; it does not change the verdict.
+
 - Write IMPL_REVIEW.md (at the task dir given in your prompt) with:
   1. **Verdict** — PASS / NEEDS_WORK / FAIL with one-line reason
   2. **Confirmed correct** — what the implementation got right (with file refs)
   3. **Issues** — each issue with: severity (critical/major/minor), file:line, description, suggested fix
   4. **Missing coverage** — test cases that should exist but don't
-  5. **Nits** — minor style/clarity issues (optional section)
+  5. **Absence check** — a `## Absence check` table, one row per check:
+     `| id | method (set-diff / counterexample) | list or mutation (command or scratch path) | result (empty / finding) | evidence (file:line) | blocking (y/n) | escaped_from (TASK-NNN or —) |`
+     Ids are `A1`, `A2`, … A finding row that is also an Issue names the same id in that Issue. `escaped_from` names an earlier task when the finding is a defect already shipped there.
+  6. **Nits** — minor style/clarity issues (optional section)
 
 Cost discipline (every call re-reads your whole context, so a stage costs roughly calls × context):
 - Run builds and test suites as one blocking foreground call with an adequate timeout, output redirected to a file under `scratch/`; then read its tail or grep it. Do not poll with `sleep` loops, and do not end your turn waiting on a background run.

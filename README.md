@@ -25,7 +25,7 @@ MAW is a set of skills that runs a coding task through a chain of independent ag
 curl -fsSL https://raw.githubusercontent.com/pockerhead/maw/main/install.sh | sh
 ```
 
-The installer finds `claude` and `codex` and sets MAW up for each one it finds. On Windows, run it from Git Bash. **Restart the harness afterwards**: skills and subagents are only picked up at session start.
+The installer finds `claude` and `codex` and sets MAW up for each one it finds. On Windows, run it from Git Bash. **Restart Codex afterwards**: it discovers repository skills only at startup. Claude Code picks up the new skills and subagents within the running session.
 
 For Claude Code, add the skills to your project's `CLAUDE.md`:
 

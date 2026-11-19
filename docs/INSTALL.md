@@ -23,7 +23,7 @@ For Claude Code, add to your project's `CLAUDE.md`:
 @.claude/skills/maw-update/SKILL.md
 ```
 
-**Restart the harness after installing (or reinstalling).** Claude Code discovers the named subagents in `.claude/agents/` at session start; Codex discovers repository skills at startup — neither picks them up mid-session. Start a fresh session before invoking `/maw-execute-task`, or spawns will fail to resolve.
+**Restart Codex after installing (or reinstalling).** Codex discovers repository skills only at startup. Claude Code watches `.claude/agents/` and `.claude/skills/` and picks up changes within the running session, so no restart is needed there. The exception is a `.claude/` under a directory added with `--add-dir`: its subagents load only after a restart. If a new skill does not appear, run `/reload-skills`.
 
 **Invocation per harness:** in Claude Code, type the slash commands (`/maw-tasks`, `/maw-execute-task`). In Codex there are no custom slash commands — ask in words ("create a task with the maw-tasks skill", "run maw-execute-task for task 3") and the repository skill is picked up. **Codex hosting on Windows** additionally requires launching the orchestrator with the sandbox disabled (nested provider CLIs cannot reach your credentials from inside the codex sandbox, and `.git` is write-protected there); — see the Hosting section of the orchestrator skill. Note that a Codex host always loads your own `~/.codex/AGENTS.md` (an interactive session has no way to suppress it) — that is accepted: the orchestrator treats its skill contract as outranking ambient instructions, and pipeline agents never inherit them.
 

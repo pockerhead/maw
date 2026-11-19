@@ -62,7 +62,7 @@ Update MAW itself:
 /maw-update                       # or just say "update MAW"
 ```
 
-It reruns the installer with the surfaces and options already installed (so `maw-reason` and `maw-selfreview` stay), asks first if installed MAW files have uncommitted local edits, and reports the upstream commit and what changed. `maw/` is never touched. Restart the harness afterwards.
+It reruns the installer with the surfaces and options already installed (so `maw-reason` and `maw-selfreview` stay), asks first if installed MAW files have uncommitted local edits, and reports the upstream commit and what changed. `maw/` is never touched. Restart Codex afterwards; Claude Code picks up the change in the running session.
 
 ## What gets produced
 

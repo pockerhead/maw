@@ -45,6 +45,6 @@ If the installer exits nonzero, show its last lines and stop. A failed fetch lea
 
 - The upstream commit and the flags you used.
 - What changed: `git diff --stat` over the installed paths, or a diff against the Step 2 copy. Name the changed skills and agent bodies in one line each. Do not paste whole files.
-- **Restart needed.** Claude Code discovers skills and named subagents at session start, and Codex discovers repository skills at startup. Tell the user to restart before the next pipeline run, and do not start one in this session.
+- **Restart for Codex only.** Codex discovers repository skills only at startup: after a Codex update, tell the user to restart before the next pipeline run and do not start one in this session. Claude Code picks up updated skills and subagents within the running session, except under an `--add-dir` directory, where subagents need a restart.
 
 Do not commit the updated files unless the user asks. In a project that commits `.claude/` or `.agents/`, offer one commit: `chore: update MAW to <short-hash>`.

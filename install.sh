@@ -332,7 +332,8 @@ echo "capability catalog (e.g. claude haiku caps at high; codex gpt-5.5 caps at"
 echo "xhigh). Invalid pairs stop with a report - nothing silently downgrades."
 if [ $INSTALL_CLAUDE -eq 1 ]; then
   echo ""
-  echo "Restart Claude Code (fresh session) so the named subagents are discovered."
+  echo "Claude Code picks up the new skills and subagents within the running session;"
+  echo "restart it only if .claude/ sits under an --add-dir directory."
 fi
 if [ $INSTALL_CODEX -eq 1 ]; then
   echo "Restart Codex so the repository skills are discovered."

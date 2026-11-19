@@ -14,6 +14,9 @@ still contain a wrong-name or wrong-path claim. Catching a broken
 presupposition now costs minutes; building code on top of it produces wasted
 work.
 
+Start with every claim the plan marks `[unverified]`, and run the check it names.
+A failed check is a broken presupposition, handled as below.
+
 For each named entity in the plan verify BOTH (an entity is OK only if both
 pass — the second check is the load-bearing one, do not skip it):
 

@@ -25,6 +25,7 @@ counter-example you tested and whether it held.
 Instructions:
 - Open the actual files mentioned in the plan. Verify every claim against real code.
 - Do not trust the plan's description of existing code — go check yourself.
+- Settle every `[unverified]` claim first: check it and record the evidence, or drop or rewrite what depends on it. An unmarked claim with no `file:line` or command output gets the same treatment. Keep an estimate or threshold with no measured basis out of the acceptance criteria.
 - **Research verification:** Use your web search and web fetch capabilities to verify the technical approach from the plan. Check if the chosen patterns/libraries are still recommended, if there are known issues or better alternatives. Cross-reference the plan's approach with industry best practices.
 - Identify: incorrect assumptions, missing steps, wrong file paths, architectural issues, skipped edge cases.
 - Write PLAN_V2.md (at the task dir given in your prompt) — a corrected and improved plan.

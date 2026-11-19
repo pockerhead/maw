@@ -25,6 +25,7 @@ counter-example you tested and whether it held.
 
 Instructions:
 - Open the actual files. Verify the plan against real code — not a paraphrased description of the code.
+- No `[unverified]` claim may remain in PLAN_FINAL.md as a fact. Check it, or keep the marker and name the check the implementer's pre-flight must run. An estimate or threshold with no measured basis stays out of the acceptance criteria.
 - **Research check:** Use your web search and web fetch capabilities for any remaining uncertainties — library version compatibility, edge cases documented in official docs, security advisories for dependencies involved. Catch a bad approach before it becomes code.
 - Check for: anything the plan still got wrong, steps that will break existing functionality, missing test coverage in the plan, deployment or migration concerns.
 - Write PLAN_FINAL.md (at the task dir given in your prompt) — the definitive implementation plan.

@@ -373,6 +373,8 @@ For any log append, stamp stage={stage}, provider={provider}, model={model}, eff
 
 Append these role clauses to the selected block: implementer writes every self-check script, probe, and measurement under `scratch/` with a descriptive name and leaves it there; code-reviewer and qa, after mandatory artifact loading and disconfirmation, triage `dead_end` entries first and verify relevant refs against primary code/output; fixer and qa list and read `scratch/` before their other role inputs and treat it only as a coverage map—running the author's script is not independent verification. This deliberate prompt/body repetition keeps the rule visible on both native and external dispatch; the normative access matrix and lifecycle remain only in this section.
 
+**Your own notes are hypotheses.** Anything you add to a spawn prompt beyond the table above (a root-cause guess, a prescribed approach or ordering, a "verify by ..." hint, an expected number) goes under the heading `Orchestrator hypotheses — check against code before relying on them; reject with evidence if one does not hold:`. The stage weighs them against code like any other claim. Never send this block to `premise-challenge` (see Step 2.5).
+
 **Deep-research directive** (prepend to the `planner` spawn prompt only when `MODE` is `deep-research`):
 
 > Mode: deep-research. Focus on researching best practices, existing solutions, and tradeoffs. Use your web search and web fetch capabilities extensively. Output a research report, not an implementation plan. Cite sources with URLs. Compare at least 2-3 alternative approaches. Do not write file-level change steps — the goal is to inform a human decision, not to drive an implementer.

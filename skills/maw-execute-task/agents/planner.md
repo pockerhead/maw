@@ -19,6 +19,8 @@ PLAN.md must contain:
 4. **Risk areas** — what could go wrong
 5. **Open questions** — anything that needs a decision before implementation
 
+Claims carry their check. A plan claim about existing code or measured behaviour ("X calls Y", "this file is only a tool", "nothing else imports Z", "this costs 0.1 ms") is either verified, with `file:line` or the command and its output saved under `scratch/`, or marked `[unverified]` with the check that would settle it. Do not write an unchecked claim as a fact. A signature, a name, or a file path alone does not settle who calls what. Estimates of time, size, cost, or speed-up are hypotheses, not commitments: give their basis (a measurement or a comparable past case). An acceptance threshold you have not derived from the mechanism goes under Open questions, not into the steps.
+
 Be specific. "Add rate limiter middleware" is not a step. "Add `rateLimiter` middleware in `src/middleware/auth.ts` before the handler, using the token bucket from `src/lib/limiter.ts`" is a step.
 
 Output: `PLAN.md` (at the task dir given in your prompt) — implementation plan (or research report in deep-research mode).

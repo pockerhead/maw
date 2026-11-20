@@ -39,6 +39,8 @@ Agent names everywhere are the agent file stems: `clarifier`, `premise-challenge
 - `spawn_timeout_min`: wall-clock cap per external spawn (default 30).
 - `shared_memory` (optional, default `true`): `false` turns off the task-folder shared memory — `transcripts/`, `scratch/`, `log.jsonl` — for every stage of the run. It trades cross-stage evidence for fewer tokens per stage; the exact off-behavior is defined once, in the Shared memory section.
 - `runner_progress` (optional, default `true`): `false` makes external spawns run with `MAW_RUNNER_PROGRESS=0`, so `scripts/runner.sh` prints only its start and exit lines instead of live event types. The capture file, exit codes, and `runner/` records are unchanged.
+- `pctx_fold` (optional, default `"manual"`): `"auto"` lets wrap-up fold the finishing task's proposals and run the migration or consolidation pass without a human (contract: maw-context Step 3b; commands: Step 10 PCTX wrap-up). `"manual"` never writes the overlay; wrap-up reports only.
+- `pctx_domain_max` (optional, default 200) and `pctx_total_max` (optional, default 1500): overflow limits, passed to `scripts/pctx-sleep.sh` as `MAW_PCTX_DOMAIN_MAX` / `MAW_PCTX_TOTAL_MAX`. They are starting values the owner accepted, not derived ones.
 - `allow_unverified_profile`: when `true`, a model absent from the capability catalog may be passed through to its provider with a warning instead of being rejected. Default `false`.
 - Machine facts (binaries present, login state) are **never** stored here — they are probed fresh each run (Step 0.65).
 - `auto_invoke_guard` (optional map): `{ "maw-execute-task": true | false | "never" }`. Governs **model-chosen** invocation of this skill (a human typing the command is never guarded). `true` (default when absent) — before any state change, present the chosen task, resolved profiles, and a cost estimate, and get explicit user confirmation. `false` — unattended model invocation allowed. `"never"` — decline model invocation entirely (the pre-v2 hard-off behavior).
@@ -667,8 +669,11 @@ eligibility defined by the base pipeline.
 If something in your work contradicts the project context above, or you hit a
 durable rule or lesson worth recording, DO NOT edit the project context.
 Append a dated entry to {TASK_DIR}/PCTX_PROPOSALS.md (create it if absent)
-stating what and why. Folding proposals into the real project context is a
-separate curated process — not yours.
+stating what and why. Folding proposals into the project context is done by a
+human (`/maw-context --review`) or by the orchestrator at wrap-up, never by you.
+{Only when PCTX/archive/ exists:} Archived lessons (not injected) live under
+{PCTX}/archive/; if a defect you report matches an archived lesson's class,
+write `class=<slug>` in that finding.
 ```
 
 Substitute `{TASK_DIR}`, `<stem>`, and every `{PCTX}` to real values. Because the catalog inside `README.md` contains `{PCTX}/domains/...` paths an agent may read on its own, the orchestrator **must** substitute `{PCTX}` when injecting README — it is near-verbatim, not pure-verbatim. (`{PCTX}` resolves to the worktree-correct path in both persistence modes; the whole `PCTX/` dir is copied into the worktree in local-only mode, Step 1.)
@@ -683,6 +688,12 @@ You are not asked to guess domains from prose. Pre-inject only what `task.md Dom
 **Precedence (generic; same lattice as model/effort in Step 0.6):** `task.md` inline override > project context > base/agent default for project guidance. Project context never overrides orchestration security or isolation, artifact write scopes, Shared memory access, or continuity eligibility. The injected header states this boundary so it is visible, not silent.
 
 This is the only project-specific seam: conditional reads plus one append plus `{PCTX}` substitution. Agent bodies are never modified for project specifics.
+
+`PCTX/archive/` and `PCTX/.sleep-state` are never injected.
+
+**Overlay helper.** `PCTX_SLEEP` is resolved like `RUNNER`: the absolute path of `scripts/pctx-sleep.sh` next to this installed SKILL.md, invoked as `sh "$PCTX_SLEEP" <subcommand> ...` (subcommands and exit codes: maw-context Step 3b).
+
+**Overflow detector (report-only).** Once per run, before Step 0.8, against `maw/project-context` at the repo root (the worktree does not exist yet, and the repo-root overlay is authoritative in both modes): if it exists, export `MAW_PCTX_DOMAIN_MAX` / `MAW_PCTX_TOTAL_MAX` from settings when set, and run `check`. On exit 10 print one line `pctx: overflow pending since <last_pass from .sleep-state, or never>`, adding `untagged=<n>` when `untagged` reports a non-zero count. It never writes. It catches a Step 10 wrap-up that an earlier run skipped.
 
 ### Step 0.8 — Move the task to in_progress (first state change)
 
@@ -849,6 +860,37 @@ Spawn `qa`: `subagent_type=maw-qa-<effort>` (effort/model per Step 0.6), `prompt
 
 **Also regardless of mode or verdict:** if `{WORK_ROOT}/{TASK_DIR}/OPEN_DECISIONS.md` exists, surface it in your final report — every entry verbatim, not a summary. These are the calls you made instead of stopping to ask (see Turn discipline); wrap-up is where the user gets to overrule them, and an entry the user never sees is the same as never having recorded it. Absent file → nothing to surface, which is the normal case for a task with no judgement calls.
 
+**Also regardless of mode or verdict, if a project-context overlay exists:** run the **PCTX wrap-up** (contract: maw-context Step 3b).
+
+- Variables:
+  - `PCTX_CODE_ROOT = $WORK_ROOT_ABS`. Every `refs` / `holder` / `restore` / `validate` code check uses it.
+  - `PCTX_TARGET` is `$WORK_ROOT/maw/project-context` in git-tracked mode and `<repo root>/maw/project-context` in local-only mode (the same directory in branch-only mode).
+  - `TASK_FOLDER_FINAL` is the task folder at its final status location in the authoritative tree.
+  - `PCTX_GIT` is `git -C "$WORK_ROOT"`.
+- When it runs:
+  - In the plan-only gate: between item 2 (move) and item 3 (commit).
+  - In the SHIP branch: after the `done/` move and before the git-tracked status commit.
+  - In the NEEDS_FIXES/REJECT branch: after the `blocked/` move.
+  - In local-only + worktree mode: always **after** the copy-back below.
+- **`pctx_fold: "auto"` and the task went to `done/`:** export `MAW_PCTX_DOMAIN_MAX` / `MAW_PCTX_TOTAL_MAX` from settings, then:
+  1. S0: `U=$(sh "$PCTX_SLEEP" untagged "$PCTX_TARGET")` (prints `untagged=<n>`). Local-only: `cp -r "$PCTX_TARGET" "$TASK_FOLDER_FINAL/pctx-before"`. Git-tracked: HEAD is S0.
+  2. `sh "$PCTX_SLEEP" restore "$PCTX_TARGET" "$PCTX_CODE_ROOT" "$TASK_FOLDER_FINAL"`. Fold the task's proposals (maw-context Step 3b items 2-3), then `sh "$PCTX_SLEEP" validate "$PCTX_TARGET" "$PCTX_CODE_ROOT"` plus the maw-context Step 4 checks.
+  3. Fold failure: revert to S0 (git-tracked: `$PCTX_GIT checkout -- maw/project-context && $PCTX_GIT clean -fdq -- maw/project-context`; local-only: replace `$PCTX_TARGET` with a copy of `pctx-before/`). Do not mark proposals. Report `pctx: reverted (fold validate failed: <first violation>)` and stop the wrap-up here.
+  4. Fold success: mark the proposals `RESOLVED`. Git-tracked with overlay changes: `$PCTX_GIT add maw/project-context && $PCTX_GIT commit -m "pctx: fold ($TASK_ID)"`.
+  5. `sh "$PCTX_SLEEP" check "$PCTX_TARGET"`. Exit 10: `S1=$(mktemp -d)`, `cp -r "$PCTX_TARGET/." "$S1/"`, then run the migration pass (U > 0) or the consolidation pass (U = 0) per maw-context Step 3b item 6, then its checks (`migrate-check "$S1" "$PCTX_TARGET"` + `validate` for migration; `validate` + Step 4 checks for consolidation).
+  6. Pass failure: revert to S1 (git-tracked: the same checkout/clean as in item 3, which lands on the fold commit; local-only: replace `$PCTX_TARGET` with a copy of `$S1`). Pass success, git-tracked: `$PCTX_GIT add maw/project-context && $PCTX_GIT commit -m "pctx: migrate tags ($TASK_ID)"` (or `"pctx: sleep pass ($TASK_ID)"`), then `$PCTX_GIT format-patch -1 --stdout HEAD > "$TASK_FOLDER_FINAL/pctx-pass.patch"`. Remove `$S1`.
+  7. `sh "$PCTX_SLEEP" state "$PCTX_TARGET" "$TASK_ID" "<report line>"` writes `.sleep-state`. In git-tracked mode it rides the next commit: the status commit `git add maw/` picks it up together with the `RESOLVED` marks and `pctx-pass.patch`.
+- **`manual`, or the task went to `blocked/`:** run `check`, `untagged` and `restore --dry-run`. Write nothing.
+- Report line, exactly one, in the final report. Pick the form that applies:
+  - `pctx: folded=F archived=A merged=M restored=R cleaned=C`
+  - `pctx: migrated tagged=T folded=F restored=R archived=0 merged=0 cleaned=0 (consolidation from next pass)`
+  - `pctx: reverted (<fold|migrate|sleep> validate failed: <first violation>) folded=F`
+  - `pctx: error (<cmd> exit <n>), overlay unchanged`
+  - `pctx: overflow <file>=<n>/<limit>[, untagged=U run /maw-context --migrate first], run /maw-context --review; restore suggestions=<n>`
+  - `pctx: ok`
+- No overlay → no line and no script call. Script missing → `pctx: error (pctx-sleep.sh missing), overlay unchanged`.
+- The pass reads only the overlay, `PCTX_PROPOSALS.md`, `IMPL_REVIEW.md` and `QA_REPORT.md`, never scratch, log or transcripts, so `shared_memory: false` does not affect it. `pctx-before/` (local-only) and `pctx-pass.patch` (git-tracked, only after a pass) ride with the task folder.
+
 **Also regardless of mode or verdict:** if `maw/ROADMAP.md` exists, regenerate it after the status move from the remaining `maw/tasks/pending/` task.md `## Dependencies` sections (same generation rule as `/maw-tasks` Step 5). This task has now left `in_progress/`, so its pending dependents must be re-derived — a `blocked by` whose blocker is now in `done/` is satisfied and that edge drops; one whose blocker went to `blocked/` stays, annotated. This is the symmetric counterpart to the Step 0 reconcile (Step 0 handles `pending→in_progress`, this handles `in_progress→done|blocked`). In git-tracked mode include it in the same status-move commit (`git add maw/`). If `maw/ROADMAP.md` does not exist, skip.
 
 **Local-only + worktree rule (applies to every status move below, and to the failure flow's `blocked/` move).** In local-only mode the worktree's `maw/` is a **copy** (Step 1); the main tree's ignored `maw/` is authoritative. Moving only the worktree copy would strand the original in `in_progress/` and lose all artifacts when the worktree is removed. So after moving the task folder inside the worktree, sync back to the main tree before any cleanup:
@@ -1006,7 +1048,7 @@ This is why the Step 0.7 overlay exists at all, and why it must be inlined rathe
 
 ## Rules for the orchestrator
 
-- Never implement anything yourself. You only spawn agents and move files/folders.
+- Never implement anything yourself. You only spawn agents and move files/folders — the one exception is the Step 10 PCTX wrap-up, which edits only the project-context overlay and the finishing task's `PCTX_PROPOSALS.md`.
 - **Code commits are your responsibility, not the agents'.** After implementer and after fixer return, if the working tree has uncommitted code changes, commit them on the task branch (`git add -A && git commit -m "<type>: <summary> (TASK-NNN)"`) before the next spawn — otherwise a worktree/branch can reach wrap-up with nothing committed (observed live). Task-folder artifacts keep their own `task:` commits per the persistence rules; don't mix the two in one commit.
 - Each agent is fresh by default; continuity exists only for the two same-goal cases defined in Shared memory. No parent conversation history crosses stages.
 - Every spawn uses the full resolved profile `(provider, model, effort)` from Step 0.6 (task.md beats settings.json) and the transport from the Dispatch rule. Native path: `model` parameter + `subagent_type=maw-<stem>-<effort>`. External path: the runner contract's flags. Never spawn without a resolved, clamped profile.

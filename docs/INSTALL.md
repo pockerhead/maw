@@ -6,7 +6,7 @@ curl -fsSL https://raw.githubusercontent.com/pockerhead/maw/main/install.sh | sh
 
 With no flags the installer detects which harnesses are present (`claude`, `codex`) and installs a surface for each. Explicit targets: `sh install.sh --claude`, `--codex`, or `--all`; add `--with-reason` for the experimental deliberation surface and `--with-hooks` for its gate. On Windows run it through Git Bash (`sh install.sh`); a native `install.ps1` twin is planned but not shipped yet.
 
-Both surfaces include `maw-execute-task/scripts/runner.sh` for external CLI stages. It shows live provider event types and tool-call activity while saving the complete JSONL stream; native Claude subagents continue through the Task tool. From PowerShell, launch shell scripts through Git's `bin/sh.exe -lc` so its Unix utilities are on PATH.
+Both surfaces include `maw-execute-task/scripts/runner.sh` for external CLI stages and `pctx-sleep.sh` (overflow check and consolidation helpers for the project-context overlay). It shows live provider event types and tool-call activity while saving the complete JSONL stream; native Claude subagents continue through the Task tool. From PowerShell, launch shell scripts through Git's `bin/sh.exe -lc` so its Unix utilities are on PATH.
 
 When upgrading an existing installation, rerun the installer to deliver the runner as well as the updated prompts, then restart the harness. Or ask the agent to "update MAW": the `maw-update` skill detects which surfaces and options are installed, reruns the installer with the same flags, and reports what changed. Copying only the new SKILL.md leaves external-stage preflight unable to find its helper.
 

@@ -2,7 +2,7 @@
 name: maw-context
 description: |
   Author and maintain the MAW project-context overlay (`maw/project-context/`) — the project knowledge the pipeline injects into agents. Use when the user says "add project context", "set up MAW for this project", "register a project invariant / rule / lesson / tool / skill / domain for the pipeline", or "review MAW context proposals".
-  Supports flag: --review to go straight to folding pending PCTX_PROPOSALS.md entries.
+  Supports flags: --review to go straight to folding pending PCTX_PROPOSALS.md entries; --migrate to add law/procedure/lesson tags to an untagged overlay without changing anything else.
 ---
 
 # MAW Project Context
@@ -26,7 +26,7 @@ Honest cost: the constant README grows with the number of domains (one catalog l
 Two rules that drive everything:
 
 - **README is normative and global; a wrong line is law.** It beats the base for every future task with no adversarial reviewer to catch it (pipeline review agents verify *code satisfies the law*, they do not audit whether the law is correct — that gate is here, Step 3). Edit it like a shared constant. Growing unwieldy → move content into a domain module, do not bloat the constant.
-- **Reduced, human-authored machinery — not zero.** The catalog is a minimal hand-written manifest; pre-inject is human-declared selective injection. This is deliberate and implementable in a prompt because a human authors it. There is no resolution engine, no token-budget gate, no includes.
+- **Reduced, human-authored machinery — not zero.** The catalog is a minimal hand-written manifest; pre-inject is human-declared selective injection. This is deliberate and implementable in a prompt because a human authors it. There is no resolution engine and no includes, and one mechanical gate: the overflow check (`pctx-sleep.sh check`, limits from `maw/settings.json`).
 
 ## Step 0 — Detect state
 
@@ -35,6 +35,7 @@ Check whether `maw/project-context/README.md` exists.
 - Absent → first-time setup; go to Step 1 (Scaffold).
 - Present, user is adding/changing knowledge → Step 2 (Intake).
 - Present, user asked to review proposals (or `--review`) → Step 3 (Review proposals).
+- Present, user asked to migrate tags (or `--migrate`) → Step 3c (Migrate tags).
 
 ## Step 1 — Scaffold
 
@@ -77,12 +78,33 @@ Domain module skeleton (`domains/<name>.md`, created in Step 2 when the user has
 ## Invariants
 <!-- Subsystem hard rules, verbatim. The few lines reviewers must see. -->
 
+## Procedures
+<!-- How to do something in this subsystem: ordered steps, a command, a checklist. -->
+
 ## Risk lessons
-<!-- Curated, dated, one line each. Folded here via Step 3, not raw dumps. -->
+<!-- Curated, dated, one line each. Folded here via Step 3 or 3b, not raw dumps. -->
 
 ## Pointers
 <!-- Bulky canonical docs to read from disk (not paste): path → what it contains. -->
 ```
+
+### Tags
+
+The single definition used by Steps 2, 3, 3b and 3c:
+
+- `[law]`: a rule that must always hold (must / never / always).
+- `[procedure]`: how to do something: ordered steps, a command, a checklist.
+- `[lesson class=<slug>]`: a lesson that came from a defect. The slug is a kebab-case name of the defect class (`[a-z0-9-]+`). Reuse an existing slug when the class matches.
+
+Tags go only on top-level `- ` lines (column 0) under `## Invariants`, `## Procedures` or `## Risk lessons` of `domains/*.md`, written as `- [law] `, `- [procedure] ` or `- [lesson class=<slug>] `. Never in README or `agents/*.md`, never on sub-bullets or continuation lines. Untagged legacy lines are valid and count as `[lesson class=untagged]` until a migration tags them. Every new line written by Step 2, Step 3 or Step 3b carries a tag.
+
+### Archive
+
+`maw/project-context/archive/<domain>.md` holds lessons taken out of the injected overlay, one per line:
+
+`- [lesson class=<slug>] <text> | archived: YYYY-MM-DD | reason: <why> | holder: <path>[#symbol]`
+
+The holder is code (a test, a check, a lint) that now enforces the class. The archive is never injected and never listed in the catalog; stages can find it with grep. `class=untagged` never appears in it.
 
 Per-agent file (`agents/<stem>.md`): only created in Step 2 when a single stage has tooling/skills the others must not carry.
 
@@ -102,15 +124,55 @@ After writing, apply Step 4 (Validate). If `README.md` grew, push back: move con
 
 ## Step 3 — Review proposals (curated fold-in)
 
-Pipeline agents never edit the overlay. When an agent hits a contradiction or a durable lesson it appends a dated entry to that task's `PCTX_PROPOSALS.md`. Folding is deliberate and happens here.
+Pipeline agents never edit the overlay. When an agent hits a contradiction or a durable lesson it appends a dated entry to that task's `PCTX_PROPOSALS.md`. Folding happens here (human-gated) or in Step 3b (automatic, when `pctx_fold` is `auto`).
 
 1. Scan all task folders (`maw/tasks/*/*/PCTX_PROPOSALS.md`) for proposal files.
 2. Present each to the user with its source task: accept, edit, or reject.
-3. For accepted ones, fold a tightened version into the **correct tier** — universal → README; subsystem → the matching `domains/X.md` (create + catalog line if it is a new domain); stage tooling → `agents/<stem>.md`. Same discipline as Step 2: curated, short, generalizing.
+3. For accepted ones, fold a tightened version into the **correct tier** — universal → README; subsystem → the matching `domains/X.md` (create + catalog line if it is a new domain); stage tooling → `agents/<stem>.md`. Same discipline as Step 2: curated, short, generalizing. Write each folded line with its tag (Tags).
 4. Append `> RESOLVED: folded into <target> on <date>` to the proposal in `PCTX_PROPOSALS.md`. Do not delete it — it stays with the task as history.
 5. Run Step 4 (Validate).
 
-Never auto-fold. A proposal from one pipeline run is unverified by design — the human is the gate.
+When `--review` runs and the script `../maw-execute-task/scripts/pctx-sleep.sh` (the installed sibling, relative to this SKILL.md) exists, also run `check`, `untagged`, `refs` and `restore --dry-run` on the overlay and show their output to the human. When it is missing, do the same checks by hand.
+
+## Step 3b — Automatic fold and sleep pass
+
+Run by the `maw-execute-task` orchestrator at wrap-up (its Step 10 "PCTX wrap-up" carries the exact commands), never by a pipeline agent and never by this skill on its own.
+
+- **When it may write without a human:** `pctx_fold` is `"auto"` in `maw/settings.json`, and the finishing task is moving to `done/`.
+- **Input:** only the finishing task's `PCTX_PROPOSALS.md`. Proposals from other tasks wait for `--review`.
+- **Script:** `pctx-sleep.sh`, subcommands `check`, `untagged`, `refs`, `holder`, `restore`, `validate`, `migrate-check`, `state`. Exit 0 ok, 1 negative result, 10 overflow, 2 usage error. An absent overlay directory is a no-op.
+
+Order:
+
+1. Snapshot S0. Count `U` with `untagged` on the overlay before any write.
+2. `restore`: bring back archived lessons whose class this task's `IMPL_REVIEW.md` or `QA_REPORT.md` names as `class=<slug>` (reason `miss`), or whose holder no longer exists (reason `holder-missing`).
+3. Fold the current proposals into `domains/*.md` / `agents/*.md`, with tags.
+4. `validate` plus the Step 4 checks. On failure, revert to S0. The proposals stay unmarked and the pass ends.
+5. Mark each folded proposal `> RESOLVED: auto-folded into <target> on <date>`. Commit the fold (git-tracked).
+6. `check`. Exit 0 ends the pass. Exit 10: snapshot S1, then:
+   - **Migration pass (U > 0):** tag every untagged line (Tags). Delete, merge, move, archive and clean nothing. Then run `migrate-check S1 <overlay>` and `validate`.
+   - **Consolidation pass (U = 0):** merge two or more lessons that share a class into one `[law]` or `[procedure]` line. Archive a lesson only after `holder` passes for a named holder, recording `archived`, `reason` and `holder`. Never re-archive a line that carries `| restored: ... reason=miss holder=<h>` with that same holder `<h>`; the miss showed that holder does not enforce the class. For each `refs` hit outside README, remove only that backticked token and append `(ref removed <date>)` to the line, keeping the line. Then run `validate` and the Step 4 checks.
+7. On failure, revert to S1; the fold stays. On success, commit the pass and save it as a patch (orchestrator Step 10).
+8. Write `.sleep-state` (`state`) and the report line.
+
+Safeguards:
+
+- S1: README.md is never auto-written. A README-targeted proposal stays pending for `--review`, because a wrong README line is unaudited law.
+- S2: Every auto change is revertible on its own. Git-tracked mode makes two commits, `pctx: fold (<TASK_ID>)` and `pctx: migrate tags (<TASK_ID>)` or `pctx: sleep pass (<TASK_ID>)`. The second is also saved as `<task folder>/pctx-pass.patch`, which survives a squash merge (`git apply -R` undoes it). Local-only mode takes a full snapshot first into `<task folder>/pctx-before/`.
+- S3: No archive without a verified holder. Cleaning removes only tokens confirmed missing and never removes a line.
+- S4: A failed `validate`, Step 4 check or `migrate-check` reverts that stage, and the report says `reverted`.
+- S5: The pass runs only on `done/`. A `blocked/` task gets report-only output.
+- S6: A new domain (catalog line) is never created automatically, because that needs a README write (S1). A proposal for an unknown domain stays pending.
+- S7: The first pass on an overlay with untagged lines only adds tags, and `migrate-check` enforces this. Merging and archiving start on the next pass.
+
+## Step 3c — Migrate tags (`--migrate`, human-gated)
+
+1. Git-tracked mode: if `git status --porcelain -- maw/project-context` is not empty, stop and ask the human to commit or stash first. Both modes: copy the overlay into a temp snapshot (`mktemp -d`).
+2. Tag every untagged line per Tags. Change nothing else.
+3. When the script exists, run `sh pctx-sleep.sh migrate-check <snapshot> maw/project-context` and `sh pctx-sleep.sh validate maw/project-context .`. When it is missing, compare by hand. On failure, restore the snapshot and report it.
+4. Show the diff: `git diff -- maw/project-context` (git-tracked) or `diff -ru <snapshot> maw/project-context` (local-only).
+5. The human accepts: commit `pctx: migrate tags (manual)` (git-tracked), then delete the snapshot. The human rejects: restore the snapshot.
+6. Run Step 4.
 
 ## Step 4 — Validate
 
@@ -122,9 +184,10 @@ Run after any write, or on request:
 - No raw notebook dumps or whole-doc pastes anywhere — bulky sources are `## Pointers` references, not pasted.
 - No overlay duplicates a shared-memory path, schema, access matrix, lifecycle, or continuity rule from the base pipeline.
 - `agents/premise-challenge.md`, `agents/plan-reviewer-1.md`, and `agents/plan-reviewer-2.md` grant no transcript or `log.jsonl` read access. Flag a protected-role access grant or shared-memory duplication for human correction; never silently treat it as higher-priority law.
+- `archive/` files are not in the catalog; run `pctx-sleep.sh validate` when the script is present.
 - README is reasonably short for being injected every spawn; if it is heavy, warn and propose cuts / moving content into domain modules.
 
-Report what passed and what needs the user. Do not edit base pipeline files — this skill only touches `maw/project-context/` and reads `PCTX_PROPOSALS.md`.
+Report what passed and what needs the user. Do not edit base pipeline files — this skill only touches `maw/project-context/` (including `archive/`) and reads `PCTX_PROPOSALS.md`.
 
 ## Persistence
 
